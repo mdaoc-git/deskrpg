@@ -5,6 +5,7 @@ import { useT } from "@/lib/i18n";
 import { Pencil, UserMinus, RotateCcw, MessageSquare, ClipboardList, Undo2 } from "lucide-react";
 import type { NpcChatMessage } from "./NpcDialog";
 import TaskPanel from "./TaskPanel";
+import TaskChatView, { type TaskMessage } from "./TaskChatView";
 import ChatInput from "./ChatInput";
 import Tab from "./ui/Tab";
 import ChatBubble from "./ui/ChatBubble";
@@ -38,6 +39,12 @@ interface ChatPanelProps {
   onRequestReportTask?: (taskId: string) => void;
   onResumeTask?: (taskId: string) => void;
   onCompleteTask?: (taskId: string) => void;
+  // Task session props
+  taskMessages?: Map<string, TaskMessage[]>;
+  isTaskStreaming?: boolean;
+  onTaskSend?: (taskId: string, message: string, files?: File[]) => void;
+  activeTaskId?: string | null;
+  onSetActiveTaskId?: (taskId: string | null) => void;
   // Channel chat
   channelMessages: ChannelChatMessage[];
   channelChatOpen?: boolean;
@@ -55,6 +62,7 @@ export default function ChatPanel({
   npcSelectList, onSelectNpc, isOwner, onEditNpc, onFireNpc, onResetNpcChat,
   channelMessages, channelChatOpen, channelChatInputDisabled, onSendChannelChat, currentPlayerName,
   npcMoveState, onReturnNpc, socket, onDeleteTask, onRequestReportTask, onResumeTask, onCompleteTask,
+  taskMessages, isTaskStreaming, onTaskSend, activeTaskId, onSetActiveTaskId,
 }: ChatPanelProps) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [manualOpen, setManualOpen] = useState(false);
@@ -269,6 +277,16 @@ export default function ChatPanel({
                   showFileUpload
                 />
               </>
+            ) : activeTaskId ? (
+              <TaskChatView
+                taskId={activeTaskId}
+                taskTitle={activeTaskId}
+                taskStatus="pending"
+                messages={taskMessages?.get(activeTaskId) || []}
+                isStreaming={isTaskStreaming || false}
+                onSend={(msg, files) => onTaskSend?.(activeTaskId, msg, files)}
+                onBack={() => onSetActiveTaskId?.(null)}
+              />
             ) : (
               <TaskPanel
                 npcId={dialogNpc!.npcId}
@@ -278,6 +296,7 @@ export default function ChatPanel({
                 onRequestReportTask={onRequestReportTask}
                 onResumeTask={onResumeTask}
                 onCompleteTask={onCompleteTask}
+                onTaskClick={(npcTaskId) => onSetActiveTaskId?.(npcTaskId)}
               />
             )}
           </>

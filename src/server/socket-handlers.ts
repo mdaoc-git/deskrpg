@@ -277,7 +277,25 @@ async function processNpcTaskActions(
 
       if (!task) continue;
 
-      io.to(input.channelId).emit("task:updated", { task, action: (taskAction as { action: string }).action });
+      const action = (taskAction as { action: string }).action;
+      io.to(input.channelId).emit("task:updated", { task, action });
+
+      // Emit task lifecycle events for client-side task cards
+      if (action === "create") {
+        io.to(input.channelId).emit("npc:task-created", {
+          npcId: input.npcId,
+          task: { id: task.id, npcTaskId: task.npcTaskId, title: task.title, status: task.status },
+        });
+      }
+      if (action === "complete") {
+        io.to(input.channelId).emit("npc:task-completed", {
+          npcId: input.npcId,
+          npcName: input.npcName,
+          taskId: task.npcTaskId,
+          title: task.title,
+          summary: (task as Record<string, unknown>).summary as string || "",
+        });
+      }
 
       if (shouldDeliverCompletionReport(taskAction as { action?: string })) {
         appendNpcHistoryMessage(input.channelId, input.npcId, parsed.message);

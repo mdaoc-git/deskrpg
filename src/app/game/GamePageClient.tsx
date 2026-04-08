@@ -242,6 +242,13 @@ function GamePageInner() {
   useEffect(() => { dialogNpcRef.current = dialogNpc; }, [dialogNpc]);
   const [npcMessages, setNpcMessages] = useState<NpcChatMessage[]>([]);
   const [isNpcStreaming, setIsNpcStreaming] = useState(false);
+  // Task session state
+  const [npcTaskMessages, setNpcTaskMessages] = useState<Map<string, Array<{ role: "player" | "npc"; content: string }>>>(new Map());
+  const [isTaskStreaming, setIsTaskStreaming] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const activeTaskIdRef = useRef<string | null>(null);
+  const taskStreamBufferRef = useRef("");
+  useEffect(() => { activeTaskIdRef.current = activeTaskId; }, [activeTaskId]);
   const [npcSelectList, setNpcSelectList] = useState<{ npcId: string; npcName: string }[] | null>(null);
   const [interactSelectList, setInteractSelectList] = useState<{ id: string; name: string; type: "npc" | "player" }[] | null>(null);
 
@@ -669,6 +676,32 @@ function GamePageInner() {
         const chunk = resolveNpcResponseChunk(data, t);
         // Ignore responses for NPCs not in the current dialog
         if (dialogNpcRef.current && dialogNpcRef.current.npcId !== data.npcId) return;
+
+        // Route to task messages if a task session is active
+        const currentActiveTaskId = activeTaskIdRef.current;
+        if (currentActiveTaskId && dialogNpcRef.current?.npcId === data.npcId) {
+          if (chunk) {
+            taskStreamBufferRef.current += chunk;
+            setNpcTaskMessages((prev) => {
+              const next = new Map(prev);
+              const msgs = [...(next.get(currentActiveTaskId) || [])];
+              const lastMsg = msgs[msgs.length - 1];
+              if (lastMsg?.role === "npc") {
+                msgs[msgs.length - 1] = { role: "npc", content: taskStreamBufferRef.current };
+              } else {
+                msgs.push({ role: "npc", content: taskStreamBufferRef.current });
+              }
+              next.set(currentActiveTaskId, msgs);
+              return next;
+            });
+          }
+          if (data.done) {
+            setIsTaskStreaming(false);
+            taskStreamBufferRef.current = "";
+          }
+          return; // Don't process as DM message
+        }
+
         if (chunk) {
           streamBufferRef.current += chunk;
           const buffered = sanitizeNpcResponseText(streamBufferRef.current, {
@@ -742,6 +775,32 @@ function GamePageInner() {
         setAllTasks((prev) => prev.filter((t) => t.npcId !== removedNpcId));
       });
 
+      // NPC task lifecycle events
+      socketInstance.on("npc:task-created", ({ npcId, task }: { npcId: string; task: { id: string; npcTaskId: string; title: string; status: string } }) => {
+        if (dialogNpcRef.current?.npcId !== npcId) return;
+        // Insert inline task card into DM messages
+        setNpcMessages((prev) => [
+          ...prev,
+          { role: "npc" as const, content: "", taskCard: { taskId: task.id, npcTaskId: task.npcTaskId, title: task.title, status: task.status } },
+        ]);
+      });
+
+      socketInstance.on("npc:task-completed", ({ npcId, npcName, taskId, title, summary }: { npcId: string; npcName: string; taskId: string; title: string; summary: string }) => {
+        // Insert completion report into DM messages
+        setNpcMessages((prev) => [
+          ...prev,
+          {
+            role: "npc" as const,
+            content: summary || `${title} 완료`,
+            taskCard: { taskId, npcTaskId: taskId, title, status: "complete" },
+          },
+        ]);
+        // Trigger NPC walk-to-player
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("npc:walk-to-player", { detail: { npcId, npcName } }));
+        }
+      });
+
       // Request initial task list for this channel
       if (channelId) {
         socketInstance.emit("task:list", { channelId });
@@ -755,6 +814,8 @@ function GamePageInner() {
         socketInstance.off("task:deleted");
         socketInstance.off("task:list-response");
         socketInstance.off("npc:broadcast-remove");
+        socketInstance.off("npc:task-created");
+        socketInstance.off("npc:task-completed");
         socketInstance.removeAllListeners();
         socketInstance.disconnect();
       }
@@ -792,6 +853,11 @@ function GamePageInner() {
     setIsNpcStreaming(false);
     setNpcSelectList(null);
     streamBufferRef.current = "";
+    // Reset task session state
+    setActiveTaskId(null);
+    activeTaskIdRef.current = null;
+    setIsTaskStreaming(false);
+    taskStreamBufferRef.current = "";
   }, []);
 
   // Keep refs in sync with state for use in socket handlers
@@ -1063,6 +1129,39 @@ function GamePageInner() {
       });
     },
     [socket, dialogNpc, showToastNotification, t],
+  );
+
+  const handleTaskDialogSend = useCallback(
+    async (taskId: string, message: string, files?: File[]) => {
+      if (!socket || !dialogNpc) return;
+
+      // Add player message to task messages
+      setNpcTaskMessages((prev) => {
+        const next = new Map(prev);
+        const msgs = [...(next.get(taskId) || [])];
+        msgs.push({ role: "player", content: message });
+        next.set(taskId, msgs);
+        return next;
+      });
+      taskStreamBufferRef.current = "";
+      setIsTaskStreaming(true);
+
+      // Convert files to ArrayBuffers
+      let filePayloads: Array<{ name: string; type: string; size: number; data: ArrayBuffer }> | undefined;
+      if (files && files.length > 0) {
+        filePayloads = await Promise.all(
+          files.map(async (f) => ({ name: f.name, type: f.type, size: f.size, data: await f.arrayBuffer() })),
+        );
+      }
+
+      socket.emit("npc:task-chat", {
+        npcId: dialogNpc.npcId,
+        taskId,
+        message,
+        files: filePayloads,
+      });
+    },
+    [socket, dialogNpc],
   );
 
   const handleChannelChatSend = useCallback((message: string) => {
@@ -2155,6 +2254,11 @@ function GamePageInner() {
             onRequestReportTask={requestTaskReport}
             onResumeTask={resumeTask}
             onCompleteTask={completeTask}
+            taskMessages={npcTaskMessages}
+            isTaskStreaming={isTaskStreaming}
+            onTaskSend={handleTaskDialogSend}
+            activeTaskId={activeTaskId}
+            onSetActiveTaskId={setActiveTaskId}
           />
         </>
       )}
