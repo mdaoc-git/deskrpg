@@ -24,12 +24,36 @@ try {
 }
 
 const hostname = process.env.HOSTNAME || "localhost";
-const port = parseInt(process.env.PORT || "3000", 10);
+const preferredPort = parseInt(process.env.PORT || "3000", 10);
 
-const app = next({ dev: true, hostname, port });
+async function findAvailablePort(
+  start: number,
+  maxAttempts = 10,
+): Promise<number> {
+  const net = await import("node:net");
+  for (let p = start; p < start + maxAttempts; p++) {
+    const available = await new Promise<boolean>((resolve) => {
+      const srv = net.createServer();
+      srv.once("error", () => resolve(false));
+      srv.listen(p, () => {
+        srv.close(() => resolve(true));
+      });
+    });
+    if (available) return p;
+  }
+  throw new Error(
+    `No available port found in range ${start}-${start + maxAttempts - 1}`,
+  );
+}
+
+const app = next({ dev: true, hostname, port: preferredPort });
 const handle = app.getRequestHandler();
 
 app.prepare().then(async () => {
+  const port = await findAvailablePort(preferredPort);
+  if (port !== preferredPort) {
+    console.log(`⚠ Port ${preferredPort} in use, using ${port} instead`);
+  }
   const {
     setupSocketHandlers,
     getOrConnectGateway,
