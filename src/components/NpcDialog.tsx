@@ -66,8 +66,9 @@ export default function NpcDialog({
   const [cooldown, setCooldown] = useState(false);
   const [tab, setTab] = useState<"chat" | "task">("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [loadedTasks, setLoadedTasks] = useState<Task[]>([]);
 
-  const activeTaskCount = tasks.filter(
+  const activeTaskCount = loadedTasks.filter(
     (tk) => tk.status === "pending" || tk.status === "in_progress",
   ).length;
 
@@ -208,8 +209,8 @@ export default function NpcDialog({
             /* Task conversation view */
             <TaskChatView
               taskId={activeTaskId}
-              taskTitle={tasks.find((tk) => tk.npcTaskId === activeTaskId)?.title || activeTaskId}
-              taskStatus={tasks.find((tk) => tk.npcTaskId === activeTaskId)?.status || "pending"}
+              taskTitle={loadedTasks.find((tk) => tk.npcTaskId === activeTaskId)?.title || activeTaskId}
+              taskStatus={loadedTasks.find((tk) => tk.npcTaskId === activeTaskId)?.status || "pending"}
               messages={taskMessages.get(activeTaskId) || []}
               isStreaming={isTaskStreaming}
               onSend={(msg, files) => onTaskSend?.(activeTaskId, msg, files)}
@@ -227,6 +228,7 @@ export default function NpcDialog({
                 onRequestReportTask={onRequestReportTask}
                 onResumeTask={onResumeTask}
                 onCompleteTask={onCompleteTask}
+                onTasksLoaded={setLoadedTasks}
               />
             </div>
           )}

@@ -15,6 +15,7 @@ interface TaskPanelProps {
   onRequestReportTask?: (taskId: string) => void;
   onResumeTask?: (taskId: string) => void;
   onCompleteTask?: (taskId: string) => void;
+  onTasksLoaded?: (tasks: Task[]) => void;
 }
 
 export default function TaskPanel({
@@ -26,6 +27,7 @@ export default function TaskPanel({
   onRequestReportTask,
   onResumeTask,
   onCompleteTask,
+  onTasksLoaded,
 }: TaskPanelProps) {
   const t = useT();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -45,6 +47,10 @@ export default function TaskPanel({
     socket.emit("task:list", { channelId: null, npcId });
     return () => { socket.off("task:list-response", handleTaskList); };
   }, [socket, npcId]);
+
+  useEffect(() => {
+    onTasksLoaded?.(tasks);
+  }, [tasks, onTasksLoaded]);
 
   useEffect(() => {
     if (!socket) return;
