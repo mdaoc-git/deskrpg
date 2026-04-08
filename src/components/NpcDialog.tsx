@@ -179,7 +179,7 @@ export default function NpcDialog({
                           {msg.role === "npc" && isStreaming && i === messages.length - 1 && (
                             <span className="inline-block w-1.5 h-4 bg-amber-400 ml-0.5 animate-pulse" />
                           )}
-                          {msg.role === "npc" && !isStreaming && isTaskConfirmPrompt(msg.content) && (
+                          {msg.role === "npc" && !isStreaming && i === messages.length - 1 && isTaskConfirmPrompt(msg.content) && (
                             <TaskConfirmButtons
                               onConfirm={() => onSend("등록해")}
                               onCancel={() => onSend("취소")}
