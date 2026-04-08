@@ -1295,6 +1295,7 @@ const ko: Record<string, string> = {
   "chat.title": "채팅",
   "chat.openChat": "채팅 열기",
   "chat.placeholder": "메시지를 입력하세요...",
+  "chat.tab": "채팅",
   "chat.npcPlaceholder": "{name}에게 인사하세요...",
   "chat.noMessages": "아직 메시지가 없습니다.",
   "chat.moveCloser": "가까이 이동하세요...",
@@ -1357,6 +1358,7 @@ const ko: Record<string, string> = {
   "context.calledByOther": "다른 사용자가 호출 중",
 
   // Task
+  "task.tab": "태스크",
   "task.title": "태스크",
   "task.board": "태스크 보드",
   "task.noTasks": "{name}에게 할당된 태스크가 없습니다",

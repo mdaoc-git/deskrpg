@@ -1294,6 +1294,7 @@ const en: Record<string, string> = {
   "chat.title": "Chat",
   "chat.openChat": "Open chat",
   "chat.placeholder": "Type a message...",
+  "chat.tab": "Chat",
   "chat.npcPlaceholder": "Say hello to {name}...",
   "chat.noMessages": "No messages yet. Say something!",
   "chat.moveCloser": "Move closer to chat...",
@@ -1356,6 +1357,7 @@ const en: Record<string, string> = {
   "context.calledByOther": "Called by another user",
 
   // Task
+  "task.tab": "Tasks",
   "task.title": "Tasks",
   "task.board": "Task Board",
   "task.noTasks": "No tasks assigned to {name}",

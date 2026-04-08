@@ -10,6 +10,7 @@ interface TaskPanelProps {
   npcId: string;
   npcName: string;
   socket: Socket | null;
+  onTaskClick?: (npcTaskId: string) => void;
   onDeleteTask?: (taskId: string) => void;
   onRequestReportTask?: (taskId: string) => void;
   onResumeTask?: (taskId: string) => void;
@@ -20,6 +21,7 @@ export default function TaskPanel({
   npcId,
   npcName,
   socket,
+  onTaskClick,
   onDeleteTask,
   onRequestReportTask,
   onResumeTask,
@@ -130,7 +132,13 @@ export default function TaskPanel({
         <>
           <div className="text-micro text-text-dim font-bold px-1">{t("task.active")} ({activeTasks.length})</div>
           {activeTasks.map((task) => (
-            <TaskCard key={task.id} task={task} onDelete={handleDelete} onRequestReport={handleRequestReport} onResume={handleResume} onComplete={handleComplete} />
+            <div
+              key={task.id}
+              onClick={() => onTaskClick?.(task.npcTaskId || task.id)}
+              className={onTaskClick ? "cursor-pointer hover:brightness-110 transition" : ""}
+            >
+              <TaskCard task={task} onDelete={handleDelete} onRequestReport={handleRequestReport} onResume={handleResume} onComplete={handleComplete} />
+            </div>
           ))}
         </>
       )}
@@ -138,7 +146,13 @@ export default function TaskPanel({
         <>
           <div className="text-micro text-text-dim font-bold px-1 mt-2">{t("task.stalled")} ({stalledTasks.length})</div>
           {stalledTasks.map((task) => (
-            <TaskCard key={task.id} task={task} onDelete={handleDelete} onRequestReport={handleRequestReport} onResume={handleResume} onComplete={handleComplete} />
+            <div
+              key={task.id}
+              onClick={() => onTaskClick?.(task.npcTaskId || task.id)}
+              className={onTaskClick ? "cursor-pointer hover:brightness-110 transition" : ""}
+            >
+              <TaskCard task={task} onDelete={handleDelete} onRequestReport={handleRequestReport} onResume={handleResume} onComplete={handleComplete} />
+            </div>
           ))}
         </>
       )}
@@ -146,7 +160,13 @@ export default function TaskPanel({
         <>
           <div className="text-micro text-text-dim font-bold px-1 mt-2">{t("task.done")} ({doneTasks.length})</div>
           {doneTasks.map((task) => (
-            <TaskCard key={task.id} task={task} onDelete={handleDelete} onRequestReport={handleRequestReport} onResume={handleResume} onComplete={handleComplete} />
+            <div
+              key={task.id}
+              onClick={() => onTaskClick?.(task.npcTaskId || task.id)}
+              className={onTaskClick ? "cursor-pointer hover:brightness-110 transition" : ""}
+            >
+              <TaskCard task={task} onDelete={handleDelete} onRequestReport={handleRequestReport} onResume={handleResume} onComplete={handleComplete} />
+            </div>
           ))}
         </>
       )}

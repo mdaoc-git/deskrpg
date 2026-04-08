@@ -1294,6 +1294,7 @@ const ja: Record<string, string> = {
   "chat.title": "チャット",
   "chat.openChat": "チャットを開く",
   "chat.placeholder": "メッセージを入力...",
+  "chat.tab": "チャット",
   "chat.npcPlaceholder": "{name}に挨拶...",
   "chat.noMessages": "まだメッセージはありません",
   "chat.moveCloser": "近づいてください...",
@@ -1356,6 +1357,7 @@ const ja: Record<string, string> = {
   "context.calledByOther": "他のユーザーが呼び出し中",
 
   // Task
+  "task.tab": "タスク",
   "task.title": "タスク",
   "task.board": "タスクボード",
   "task.noTasks": "{name}に割り当てられたタスクはありません",

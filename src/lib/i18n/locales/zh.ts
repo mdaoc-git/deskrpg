@@ -1294,6 +1294,7 @@ const zh: Record<string, string> = {
   "chat.title": "聊天",
   "chat.openChat": "打开聊天",
   "chat.placeholder": "输入消息...",
+  "chat.tab": "聊天",
   "chat.npcPlaceholder": "向{name}打招呼...",
   "chat.noMessages": "还没有消息",
   "chat.moveCloser": "请靠近...",
@@ -1356,6 +1357,7 @@ const zh: Record<string, string> = {
   "context.calledByOther": "其他用户正在呼叫",
 
   // Task
+  "task.tab": "任务",
   "task.title": "任务",
   "task.board": "任务看板",
   "task.noTasks": "{name}没有分配的任务",
