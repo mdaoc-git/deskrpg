@@ -313,6 +313,23 @@ class TaskManager {
     return normalizeTask(row);
   }
 
+  async getTaskByNpcTaskId(npcId, npcTaskId) {
+    const { db, schema } = this;
+
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.npcId, npcId),
+          eq(schema.tasks.npcTaskId, npcTaskId),
+        ),
+      )
+      .limit(1);
+
+    return rows[0] ? normalizeTask(rows[0]) : null;
+  }
+
   async completeTask(taskId, channelId) {
     const { db, schema } = this;
     const completedAt = nowIso();

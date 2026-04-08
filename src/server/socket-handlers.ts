@@ -60,9 +60,9 @@ const { parseNpcResponse, isValidTaskAction } = require("../lib/task-parser.js")
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sanitizeNpcResponseText } = require("../lib/task-block-utils.js") as typeof import("../lib/task-block-utils.js");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { TaskManager } = require("../lib/task-manager.js") as { TaskManager: new (db: typeof import("../db").db, schema: { tasks: typeof tasks; npcs: typeof npcs }) => { handleTaskAction: (...args: unknown[]) => Promise<unknown>; getTasksByNpc: (npcId: string) => Promise<unknown[]>; getTasksByChannel: (channelId: string) => Promise<unknown[]>; deleteTask: (taskId: string, channelId: string) => Promise<unknown>; getStaleInProgressTasks: (channelId: string, olderThanIso: string) => Promise<unknown[]>; markTaskNudged: (taskId: string, channelId: string) => Promise<unknown>; markTaskStalled: (taskId: string, channelId: string, reason: string) => Promise<unknown>; resumeTask: (taskId: string, channelId: string) => Promise<unknown>; completeTask: (taskId: string, channelId: string) => Promise<unknown>; getTaskById: (taskId: string, channelId: string) => Promise<unknown>; }; };
+const { TaskManager } = require("../lib/task-manager.js") as { TaskManager: new (db: typeof import("../db").db, schema: { tasks: typeof tasks; npcs: typeof npcs }) => { handleTaskAction: (...args: unknown[]) => Promise<unknown>; getTasksByNpc: (npcId: string) => Promise<unknown[]>; getTasksByChannel: (channelId: string) => Promise<unknown[]>; deleteTask: (taskId: string, channelId: string) => Promise<unknown>; getStaleInProgressTasks: (channelId: string, olderThanIso: string) => Promise<unknown[]>; markTaskNudged: (taskId: string, channelId: string) => Promise<unknown>; markTaskStalled: (taskId: string, channelId: string, reason: string) => Promise<unknown>; resumeTask: (taskId: string, channelId: string) => Promise<unknown>; completeTask: (taskId: string, channelId: string) => Promise<unknown>; getTaskById: (taskId: string, channelId: string) => Promise<unknown>; getTaskByNpcTaskId: (npcId: string, npcTaskId: string) => Promise<unknown>; }; };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { withTaskReminder, normalizeTaskPromptLocale } = require("../lib/task-prompt.js") as typeof import("../lib/task-prompt.js");
+const { withTaskReminder, normalizeTaskPromptLocale, buildTaskSessionPrompt } = require("../lib/task-prompt.js") as typeof import("../lib/task-prompt.js");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1062,6 +1062,103 @@ export function setupSocketHandlers(io: Server) {
       const history = npcChatHistory.get(historyKey) || [];
       socket.emit("npc:history", { npcId, messages: history });
     });
+
+    // ----- npc:task-chat (per-task session) -----
+    socket.on(
+      "npc:task-chat",
+      async (data: {
+        npcId: string;
+        taskId: string;
+        message: string;
+        files?: Array<{ name: string; type: string; size: number; data: ArrayBuffer }>;
+      }) => {
+        const { npcId, taskId, message, files } = data;
+        chatLog(`← task-chat to ${npcId} task=${taskId}:`, message?.slice(0, 100));
+
+        if (!npcId || !taskId || !message || typeof message !== "string") return;
+        const trimmed = message.trim().slice(0, 500);
+        if (!trimmed && (!files || files.length === 0)) return;
+
+        // Rate limit
+        const now = Date.now();
+        const lastTime = lastChatTime.get(socket.id) || 0;
+        if (now - lastTime < CHAT_COOLDOWN_MS) {
+          emitNpcSystemResponse(socket, npcId, "wait_before_sending");
+          return;
+        }
+        lastChatTime.set(socket.id, now);
+
+        // Load NPC config
+        const npcConfig = await getNpcConfig(npcId);
+        if (!npcConfig) {
+          emitNpcSystemResponse(socket, npcId, "npc_not_found");
+          return;
+        }
+
+        // Load task from DB for context injection
+        const task = await taskManager.getTaskByNpcTaskId(npcId, taskId) as {
+          title: string; npcTaskId: string; status: string;
+          summary: string | null; createdAt: string;
+        } | null;
+
+        // File processing (same pattern as npc:chat)
+        let extractedFiles: ExtractedFile[] = [];
+        let fileAttachments: OpenClawAttachment[] | undefined;
+
+        if (files && files.length > 0) {
+          if (files.length > FILE_LIMITS.maxFileCount) {
+            emitNpcSystemResponse(socket, npcId, "too_many_files");
+            return;
+          }
+          for (const f of files) {
+            if (f.size > FILE_LIMITS.maxFileSize) {
+              emitNpcSystemResponse(socket, npcId, "file_too_large");
+              return;
+            }
+            if (!isAllowedFileType(f.name, f.type)) {
+              emitNpcSystemResponse(socket, npcId, "unsupported_file_type");
+              return;
+            }
+          }
+          extractedFiles = await Promise.all(
+            files.map((f) => extractFileContent(Buffer.from(f.data), f.name, f.type)),
+          );
+          fileAttachments = buildAttachments(extractedFiles);
+        }
+
+        // Build message with task session context
+        const fileSection = buildFilePromptSection(extractedFiles);
+        const taskPrompt = task
+          ? buildTaskSessionPrompt(task, getSocketLocale(socket))
+          : "";
+        const messageToSend = (taskPrompt ? taskPrompt + "\n\n" : "") + withTaskReminder(trimmed + fileSection, getSocketLocale(socket));
+
+        // Session key: per-task
+        const sessionKey = `${npcConfig.sessionKeyPrefix || npcId}-task-${taskId}`;
+
+        chatLog(`  → task gateway (${npcConfig._name}): task=${taskId} sessionKey=${sessionKey}`);
+        const response = await streamNpcResponse(
+          socket, npcId, npcConfig, user.userId, messageToSend, fileAttachments, sessionKey,
+        );
+        chatLog(`  ← task response (${npcConfig._name}):`, response ? response.slice(0, 150) : "(empty)");
+
+        if (response) {
+          const parsed = parseNpcResponse(response);
+          const sanitizedResponse = sanitizeNpcResponseText(response);
+          const player = players.get(socket.id);
+          if (player?.characterId) {
+            await processNpcTaskActions(io, parsed, {
+              channelId: npcConfig._channelId,
+              npcId,
+              npcName: npcConfig._name,
+              assignerCharacterId: player.characterId,
+              targetUserId: player.userId,
+            });
+          }
+          socket.emit("npc:response-complete", { npcId, npcName: npcConfig._name || npcId });
+        }
+      },
+    );
 
     socket.on("npc:reset-chat", ({ npcId }: { npcId: string }) => {
       if (!npcId) return;
