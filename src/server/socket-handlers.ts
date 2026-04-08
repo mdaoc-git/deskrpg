@@ -568,8 +568,10 @@ async function streamNpcResponse(
   message: string,
   attachments?: OpenClawAttachment[],
   sessionKeyOverride?: string,
+  emitEvent?: string,
 ): Promise<string> {
   const { agentId, _channelId, sessionKeyPrefix } = npcConfig;
+  const responseEvent = emitEvent || "npc:response";
 
   if (!agentId) {
     emitNpcSystemResponse(socket, npcId, "no_agent");
@@ -589,11 +591,11 @@ async function streamNpcResponse(
       sessionKey,
       message,
       (delta: string) => {
-        socket.emit("npc:response", { npcId, chunk: delta, done: false });
+        socket.emit(responseEvent, { npcId, chunk: delta, done: false });
       },
       attachments,
     );
-    socket.emit("npc:response", { npcId, chunk: "", done: true });
+    socket.emit(responseEvent, { npcId, chunk: "", done: true });
     return response || "";
   } catch (err) {
     console.error(`[npc] OpenClaw chatSend error for ${npcId}:`, err);
@@ -1156,7 +1158,7 @@ export function setupSocketHandlers(io: Server) {
 
         chatLog(`  → task gateway (${npcConfig._name}): task=${taskId} sessionKey=${sessionKey}`);
         const response = await streamNpcResponse(
-          socket, npcId, npcConfig, user.userId, messageToSend, fileAttachments, sessionKey,
+          socket, npcId, npcConfig, user.userId, messageToSend, fileAttachments, sessionKey, "npc:task-response",
         );
         chatLog(`  ← task response (${npcConfig._name}):`, response ? response.slice(0, 150) : "(empty)");
 

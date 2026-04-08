@@ -671,36 +671,11 @@ function GamePageInner() {
         EventBus.emit("npc:start-return", { npcId: data.npcId });
       });
 
-      // NPC response streaming — only process for the NPC currently in dialog
+      // NPC response streaming — DM messages only
       socketInstance.on("npc:response", (data: NpcResponsePayload) => {
         const chunk = resolveNpcResponseChunk(data, t);
         // Ignore responses for NPCs not in the current dialog
         if (dialogNpcRef.current && dialogNpcRef.current.npcId !== data.npcId) return;
-
-        // Route to task messages if a task session is active
-        const currentActiveTaskId = activeTaskIdRef.current;
-        if (currentActiveTaskId && dialogNpcRef.current?.npcId === data.npcId) {
-          if (chunk) {
-            taskStreamBufferRef.current += chunk;
-            setNpcTaskMessages((prev) => {
-              const next = new Map(prev);
-              const msgs = [...(next.get(currentActiveTaskId) || [])];
-              const lastMsg = msgs[msgs.length - 1];
-              if (lastMsg?.role === "npc") {
-                msgs[msgs.length - 1] = { role: "npc", content: taskStreamBufferRef.current };
-              } else {
-                msgs.push({ role: "npc", content: taskStreamBufferRef.current });
-              }
-              next.set(currentActiveTaskId, msgs);
-              return next;
-            });
-          }
-          if (data.done) {
-            setIsTaskStreaming(false);
-            taskStreamBufferRef.current = "";
-          }
-          return; // Don't process as DM message
-        }
 
         if (chunk) {
           streamBufferRef.current += chunk;
@@ -733,6 +708,32 @@ function GamePageInner() {
             return prev;
           });
           streamBufferRef.current = "";
+        }
+      });
+
+      // NPC task response streaming — per-task session messages
+      socketInstance.on("npc:task-response", ({ npcId, chunk, done }: { npcId: string; chunk: string; done: boolean }) => {
+        const taskId = activeTaskIdRef.current;
+        if (!taskId) return;
+
+        if (chunk) {
+          taskStreamBufferRef.current += chunk;
+          setNpcTaskMessages((prev) => {
+            const next = new Map(prev);
+            const msgs = [...(next.get(taskId) || [])];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg?.role === "npc") {
+              msgs[msgs.length - 1] = { role: "npc", content: taskStreamBufferRef.current };
+            } else {
+              msgs.push({ role: "npc", content: taskStreamBufferRef.current });
+            }
+            next.set(taskId, msgs);
+            return next;
+          });
+        }
+        if (done) {
+          setIsTaskStreaming(false);
+          taskStreamBufferRef.current = "";
         }
       });
 
@@ -816,6 +817,7 @@ function GamePageInner() {
         socketInstance.off("npc:broadcast-remove");
         socketInstance.off("npc:task-created");
         socketInstance.off("npc:task-completed");
+        socketInstance.off("npc:task-response");
         socketInstance.removeAllListeners();
         socketInstance.disconnect();
       }
