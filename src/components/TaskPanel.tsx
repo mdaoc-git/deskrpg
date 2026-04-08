@@ -9,7 +9,7 @@ import TaskCreateForm from './TaskCreateForm';
 
 interface TaskPanelProps {
   npcId: string;
-  channelId: string;
+  channelId?: string;
   npcName: string;
   socket: Socket | null;
   onTaskClick?: (npcTaskId: string) => void;
