@@ -1981,6 +1981,7 @@ const en: Record<string, string> = {
   "errors.agentInUseByNpc": "This agent is currently used by an NPC",
   "errors.failedToRemoveAgentFromGateway": "Failed to remove agent from gateway",
   "errors.templateDeleteConfirm": "Delete \"{name}\"? This cannot be undone.",
+  "task.chatPlaceholder": "Send additional instructions about this task.",
 };
 
 export default en;

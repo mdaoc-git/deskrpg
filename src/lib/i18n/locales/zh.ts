@@ -1980,6 +1980,7 @@ const zh: Record<string, string> = {
   "errors.agentInUseByNpc": "该代理当前正被 NPC 使用",
   "errors.failedToRemoveAgentFromGateway": "无法从网关删除代理",
   "errors.templateDeleteConfirm": "要删除“{name}”吗？此操作无法撤销。",
+  "task.chatPlaceholder": "发送关于此任务的额外指示。",
 };
 
 export default zh;

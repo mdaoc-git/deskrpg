@@ -1982,6 +1982,7 @@ const ko: Record<string, string> = {
   "errors.agentInUseByNpc": "이 에이전트는 현재 NPC가 사용 중입니다",
   "errors.failedToRemoveAgentFromGateway": "게이트웨이에서 에이전트를 삭제하지 못했습니다",
   "errors.templateDeleteConfirm": "\"{name}\"을(를) 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
+  "task.chatPlaceholder": "태스크에 대해 추가 지시를 보내보세요.",
 };
 
 export default ko;
