@@ -129,6 +129,25 @@ function withTaskReminder(userMessage, locale) {
   return buildTaskReminder(locale) + "\n\n" + userMessage;
 }
 
+function buildTaskSessionPrompt(task, locale) {
+  const context = [
+    "[TASK CONTEXT]",
+    `현재 태스크: ${task.title}`,
+    `태스크 ID: ${task.npcTaskId}`,
+    `상태: ${task.status}`,
+    `생성일: ${task.createdAt}`,
+  ];
+  if (task.summary) {
+    context.push(`최근 요약: ${task.summary}`);
+  }
+  context.push("");
+  context.push("이 대화는 위 태스크 전용입니다.");
+  context.push("태스크와 관련된 작업에 집중하되, 사용자의 추가 지시에 유연하게 대응하세요.");
+  context.push("진행 상황 업데이트 시 반드시 json:task 블록을 포함하세요.");
+
+  return context.join("\n") + "\n\n" + buildTaskCorePrompt(locale);
+}
+
 module.exports = {
   TASK_CORE_PROMPT,
   injectTaskPrompt,
@@ -136,5 +155,6 @@ module.exports = {
   withTaskReminder,
   buildTaskCorePrompt,
   buildTaskReminder,
+  buildTaskSessionPrompt,
   normalizeTaskPromptLocale,
 };
