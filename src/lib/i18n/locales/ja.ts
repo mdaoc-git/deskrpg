@@ -1983,6 +1983,8 @@ const ja: Record<string, string> = {
   "errors.failedToRemoveAgentFromGateway": "ゲートウェイからエージェントを削除できませんでした",
   "errors.templateDeleteConfirm": "「{name}」を削除しますか? この操作は元に戻せません。",
   "task.chatPlaceholder": "タスクについて追加の指示を送信してください。",
+  "task.register": "登録",
+  "task.registered": "登録済み",
 };
 
 export default ja;

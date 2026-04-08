@@ -1983,6 +1983,8 @@ const zh: Record<string, string> = {
   "errors.failedToRemoveAgentFromGateway": "无法从网关删除代理",
   "errors.templateDeleteConfirm": "要删除“{name}”吗？此操作无法撤销。",
   "task.chatPlaceholder": "发送关于此任务的额外指示。",
+  "task.register": "登记",
+  "task.registered": "已登记",
 };
 
 export default zh;

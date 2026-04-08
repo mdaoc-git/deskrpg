@@ -1985,6 +1985,8 @@ const ko: Record<string, string> = {
   "errors.failedToRemoveAgentFromGateway": "게이트웨이에서 에이전트를 삭제하지 못했습니다",
   "errors.templateDeleteConfirm": "\"{name}\"을(를) 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
   "task.chatPlaceholder": "태스크에 대해 추가 지시를 보내보세요.",
+  "task.register": "등록",
+  "task.registered": "등록됨",
 };
 
 export default ko;

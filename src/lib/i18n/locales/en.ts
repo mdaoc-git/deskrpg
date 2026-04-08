@@ -1984,6 +1984,8 @@ const en: Record<string, string> = {
   "errors.failedToRemoveAgentFromGateway": "Failed to remove agent from gateway",
   "errors.templateDeleteConfirm": "Delete \"{name}\"? This cannot be undone.",
   "task.chatPlaceholder": "Send additional instructions about this task.",
+  "task.register": "Register",
+  "task.registered": "Registered",
 };
 
 export default en;
