@@ -549,6 +549,7 @@ async function streamNpcResponse(
   userId: string,
   message: string,
   attachments?: OpenClawAttachment[],
+  sessionKeyOverride?: string,
 ): Promise<string> {
   const { agentId, _channelId, sessionKeyPrefix } = npcConfig;
 
@@ -563,7 +564,7 @@ async function streamNpcResponse(
     return "";
   }
 
-  const sessionKey = `${sessionKeyPrefix || npcId}-dm-${userId}`;
+  const sessionKey = sessionKeyOverride || `${sessionKeyPrefix || npcId}-dm-${userId}`;
   try {
     const response = await gateway.chatSend(
       agentId,
