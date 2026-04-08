@@ -313,6 +313,64 @@ class TaskManager {
     return normalizeTask(row);
   }
 
+  /**
+   * Move a task to a new status. Handles npcId assignment/clearing.
+   * Returns task object with _fromStatus for the caller to trigger actions.
+   * @throws {Error} if npcId is required but not provided
+   */
+  async moveTask(taskId, channelId, toStatus, npcId) {
+    const { db, schema } = this;
+
+    const current = await this.getTaskById(taskId, channelId);
+    if (!current) return null;
+
+    const fromStatus = current.status;
+
+    let finalNpcId;
+    if (toStatus === "backlog") {
+      finalNpcId = null;
+    } else if (toStatus === "cancelled") {
+      finalNpcId = npcId || current.npcId || null;
+    } else if (npcId) {
+      finalNpcId = npcId;
+    } else if (current.npcId) {
+      finalNpcId = current.npcId;
+    } else {
+      throw new Error("npcId required for status: " + toStatus);
+    }
+
+    const now = nowIso();
+    const completedAt = (toStatus === "complete" || toStatus === "cancelled") ? now : null;
+
+    const updates = {
+      status: toStatus,
+      npcId: finalNpcId,
+      updatedAt: now,
+      completedAt,
+    };
+
+    if (toStatus === "in_progress" || toStatus === "backlog") {
+      updates.autoNudgeCount = 0;
+      updates.lastNudgedAt = null;
+      updates.stalledAt = null;
+      updates.stalledReason = null;
+    }
+
+    const [row] = await db
+      .update(schema.tasks)
+      .set(updates)
+      .where(
+        and(
+          eq(schema.tasks.id, taskId),
+          eq(schema.tasks.channelId, channelId),
+        ),
+      )
+      .returning();
+
+    const task = normalizeTask(row);
+    return { ...task, _fromStatus: fromStatus };
+  }
+
   async getTaskByNpcTaskId(npcId, npcTaskId) {
     const { db, schema } = this;
 

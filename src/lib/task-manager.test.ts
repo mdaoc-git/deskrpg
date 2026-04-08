@@ -15,6 +15,8 @@ const { TaskManager } = require("./task-manager.js") as {
   ) => {
     handleTaskAction: (...args: unknown[]) => Promise<Record<string, unknown> | null>;
     getTaskById: (taskId: string, channelId: string) => Promise<Record<string, unknown> | null>;
+    moveTask: (taskId: string, channelId: string, toStatus: string, npcId: string | null) => Promise<Record<string, unknown> | null>;
+    createBacklogTask: (channelId: string, assignerId: string, title: string, summary: string | null) => Promise<Record<string, unknown>>;
     markTaskNudged: (taskId: string, channelId: string) => Promise<Record<string, unknown> | null>;
     markTaskStalled: (taskId: string, channelId: string, reason?: string) => Promise<Record<string, unknown> | null>;
     resumeTask: (taskId: string, channelId: string) => Promise<Record<string, unknown> | null>;
@@ -220,4 +222,56 @@ test("createBacklogTask: creates task with null npcId and backlog status", async
   assert.equal(task.summary, "Some description");
   assert.ok(task.id);
   assert.ok(task.npcTaskId);
+});
+
+test("moveTask: backlog → pending with npcId", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Test task", null);
+  const moved = await mgr.moveTask(task.id, "channel-1", "pending", "npc-1");
+  assert.equal(moved.status, "pending");
+  assert.equal(moved.npcId, "npc-1");
+});
+
+test("moveTask: pending → backlog clears npcId", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Test task", null);
+  await mgr.moveTask(task.id, "channel-1", "pending", "npc-1");
+  const moved = await mgr.moveTask(task.id, "channel-1", "backlog", null);
+  assert.equal(moved.status, "backlog");
+  assert.equal(moved.npcId, null);
+});
+
+test("moveTask: pending → in_progress keeps existing npcId", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Test task", null);
+  await mgr.moveTask(task.id, "channel-1", "pending", "npc-1");
+  const moved = await mgr.moveTask(task.id, "channel-1", "in_progress", null);
+  assert.equal(moved.status, "in_progress");
+  assert.equal(moved.npcId, "npc-1");
+});
+
+test("moveTask: any → complete sets completedAt", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Test task", null);
+  await mgr.moveTask(task.id, "channel-1", "pending", "npc-1");
+  const moved = await mgr.moveTask(task.id, "channel-1", "complete", null);
+  assert.equal(moved.status, "complete");
+  assert.ok(moved.completedAt);
+});
+
+test("moveTask: any → cancelled without npcId", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Test task", null);
+  const moved = await mgr.moveTask(task.id, "channel-1", "cancelled", null);
+  assert.equal(moved.status, "cancelled");
+  assert.equal(moved.npcId, null);
+});
+
+test("moveTask: rejects non-backlog/cancelled without npcId when task unassigned", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Test task", null);
+  await assert.rejects(
+    () => mgr.moveTask(task.id, "channel-1", "pending", null),
+    { message: /npcId required/ },
+  );
 });
