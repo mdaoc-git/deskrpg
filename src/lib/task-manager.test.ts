@@ -18,6 +18,7 @@ const { TaskManager } = require("./task-manager.js") as {
     markTaskNudged: (taskId: string, channelId: string) => Promise<Record<string, unknown> | null>;
     markTaskStalled: (taskId: string, channelId: string, reason?: string) => Promise<Record<string, unknown> | null>;
     resumeTask: (taskId: string, channelId: string) => Promise<Record<string, unknown> | null>;
+    getTaskByNpcTaskId: (npcId: string, npcTaskId: string) => Promise<Record<string, unknown> | null>;
     getStaleInProgressTasks: (channelId: string, olderThanIso: string) => Promise<Record<string, unknown>[]>;
   };
 };
@@ -168,6 +169,26 @@ test("resumeTask resets counters and returns in_progress", async () => {
   assert.equal(resumed?.lastNudgedAt, null);
   assert.equal(resumed?.stalledAt, null);
   assert.equal(resumed?.stalledReason, null);
+});
+
+test("getTaskByNpcTaskId returns null for non-existent task", async () => {
+  const { manager } = createTaskTestDb();
+  const result = await manager.getTaskByNpcTaskId("non-existent-npc", "non-existent-task");
+  assert.equal(result, null);
+});
+
+test("getTaskByNpcTaskId returns the correct task", async () => {
+  const { manager } = createTaskTestDb();
+  await manager.handleTaskAction(
+    { action: "create", id: "eunyu-1", title: "뉴스 조사", summary: "착수", status: "in_progress" },
+    "channel-1",
+    "npc-1",
+    "character-1",
+  );
+  const found = await manager.getTaskByNpcTaskId("npc-1", "eunyu-1");
+  assert.ok(found);
+  assert.equal(found.npcTaskId, "eunyu-1");
+  assert.equal(found.title, "뉴스 조사");
 });
 
 test("getStaleInProgressTasks prefers lastReportedAt when present", async () => {

@@ -37,3 +37,25 @@ test("buildTaskSessionPrompt works with null summary", () => {
   assert.ok(result.includes("테스트"));
   assert.ok(!result.includes("null"));
 });
+
+test("buildTaskSessionPrompt includes buildTaskCorePrompt content", () => {
+  const { buildTaskSessionPrompt, buildTaskCorePrompt } = require("./task-prompt.js");
+  const task = { title: "Test", npcTaskId: "t-1", status: "in_progress", summary: null, createdAt: "2026-04-08T00:00:00Z" };
+  const result = buildTaskSessionPrompt(task, "ko");
+  // Should contain both task context AND core prompt
+  assert.ok(result.includes("[TASK CONTEXT]"));
+  assert.ok(result.includes("json:task"));
+});
+
+test("buildTaskSessionPrompt locale fallback to en", () => {
+  const { buildTaskSessionPrompt } = require("./task-prompt.js");
+  const task = { title: "Test", npcTaskId: "t-1", status: "pending", summary: "doing stuff", createdAt: "2026-04-08T00:00:00Z" };
+  const resultKo = buildTaskSessionPrompt(task, "ko");
+  const resultEn = buildTaskSessionPrompt(task, "en");
+  // Both should contain task context
+  assert.ok(resultKo.includes("Test"));
+  assert.ok(resultEn.includes("Test"));
+  // Both should contain core prompt (different locales)
+  assert.ok(resultKo.length > 100);
+  assert.ok(resultEn.length > 100);
+});
