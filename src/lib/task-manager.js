@@ -351,6 +351,33 @@ class TaskManager {
 
     return normalizeTask(row);
   }
+
+  async createBacklogTask(channelId, assignerId, title, summary) {
+    const { db, schema } = this;
+    const npcTaskId = `backlog-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+    const [row] = await db
+      .insert(schema.tasks)
+      .values({
+        channelId,
+        npcId: null,
+        assignerId,
+        npcTaskId,
+        title,
+        summary: summary || null,
+        status: "backlog",
+        autoNudgeCount: 0,
+        autoNudgeMax: 5,
+        lastNudgedAt: null,
+        lastReportedAt: null,
+        stalledAt: null,
+        stalledReason: null,
+        completedAt: null,
+      })
+      .returning();
+
+    return normalizeTask(row);
+  }
 }
 
 module.exports = { TaskManager };

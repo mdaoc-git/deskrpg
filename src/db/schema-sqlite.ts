@@ -275,7 +275,7 @@ export const meetingMinutes = sqliteTable("meeting_minutes", {
 export const tasks = sqliteTable("tasks", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   channelId: text("channel_id").notNull().references(() => channels.id),
-  npcId: text("npc_id").notNull().references(() => npcs.id, { onDelete: "cascade" }),
+  npcId: text("npc_id").references(() => npcs.id, { onDelete: "cascade" }),
   assignerId: text("assigner_id").notNull().references(() => characters.id),
   npcTaskId: text("npc_task_id").notNull(),
   title: text("title").notNull(),

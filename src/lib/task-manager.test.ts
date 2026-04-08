@@ -52,7 +52,7 @@ function createTaskTestDb() {
     CREATE TABLE tasks (
       id TEXT PRIMARY KEY NOT NULL,
       channel_id TEXT NOT NULL REFERENCES channels(id),
-      npc_id TEXT NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+      npc_id TEXT REFERENCES npcs(id) ON DELETE CASCADE,
       assigner_id TEXT NOT NULL REFERENCES characters(id),
       npc_task_id TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -90,7 +90,8 @@ function createTaskTestDb() {
     "2026-03-31T00:00:00.000Z",
   );
 
-  return { sqlite, db, manager: new TaskManager(db, { tasks, npcs }) };
+  const mgr = new TaskManager(db, { tasks, npcs });
+  return { sqlite, db, manager: mgr, mgr };
 }
 
 test("handleTaskAction(create) initializes auto-nudge metadata", async () => {
@@ -207,4 +208,16 @@ test("getStaleInProgressTasks prefers lastReportedAt when present", async () => 
   const stale = await manager.getStaleInProgressTasks("channel-1", "2026-03-31T00:05:00.000Z");
 
   assert.deepEqual(stale.map((task) => task.npcTaskId), []);
+});
+
+test("createBacklogTask: creates task with null npcId and backlog status", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Backlog task title", "Some description");
+  assert.ok(task);
+  assert.equal(task.status, "backlog");
+  assert.equal(task.npcId, null);
+  assert.equal(task.title, "Backlog task title");
+  assert.equal(task.summary, "Some description");
+  assert.ok(task.id);
+  assert.ok(task.npcTaskId);
 });

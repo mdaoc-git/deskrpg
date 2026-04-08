@@ -275,7 +275,7 @@ export const meetingMinutes = pgTable("meeting_minutes", {
 export const tasks = pgTable("tasks", {
   id: uuid("id").defaultRandom().primaryKey(),
   channelId: uuid("channel_id").notNull().references(() => channels.id),
-  npcId: uuid("npc_id").notNull().references(() => npcs.id, { onDelete: "cascade" }),
+  npcId: uuid("npc_id").references(() => npcs.id, { onDelete: "cascade" }),
   assignerId: uuid("assigner_id").notNull().references(() => characters.id),
   npcTaskId: varchar("npc_task_id", { length: 64 }).notNull(),
   title: varchar("title", { length: 200 }).notNull(),
