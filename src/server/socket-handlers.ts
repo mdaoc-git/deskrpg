@@ -55,6 +55,10 @@ import {
 import { registerMeetingDiscussionHandlers } from "./meeting-discussion";
 import { AdapterRegistry } from "../lib/adapters/types.js";
 import { OpenClawAdapter } from "../lib/adapters/openclaw-adapter.js";
+import { ClaudeAdapter } from "../lib/adapters/claude-adapter.js";
+import { CodexAdapter } from "../lib/adapters/codex-adapter.js";
+import { GeminiAdapter } from "../lib/adapters/gemini-adapter.js";
+import { OpencodeAdapter as OpenCodeAdapter } from "../lib/adapters/opencode-adapter.js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
 const { OpenClawGateway } = require("../lib/openclaw-gateway.js") as { OpenClawGateway: new () => any };
@@ -70,6 +74,17 @@ const { withTaskReminder, normalizeTaskPromptLocale, buildTaskSessionPrompt } = 
 const adapterRegistry = new AdapterRegistry();
 const openclawAdapter = new OpenClawAdapter();
 adapterRegistry.register(openclawAdapter);
+
+// Register CLI adapters when the corresponding local CLI is installed.
+for (const AdapterClass of [ClaudeAdapter, CodexAdapter, GeminiAdapter, OpenCodeAdapter]) {
+  const adapter = new AdapterClass();
+  void adapter.testConnection({}).then((result) => {
+    if (result.status === "ok") {
+      adapterRegistry.register(adapter);
+      console.log("[adapters] Registered", adapter.type, "adapter (", result.version, ")");
+    }
+  }).catch(() => {});
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -364,25 +379,43 @@ async function runProgressNudgeForTask(
 
   try {
     const npcConfig = await getNpcConfig(task.npcId);
-    if (!npcConfig?.agentId) return;
-    if (!adapterRegistry.has(npcConfig.adapterType) || npcConfig.adapterType !== openclawAdapter.type) {
-      return;
-    }
+    if (!npcConfig) return;
 
     const targetUserId = await getAssignerUserId(task.assignerId);
     if (!targetUserId) return;
 
-    const gateway = await getOrConnectGateway(task.channelId);
-    if (!gateway) return;
-
     const sessionKey = `${npcConfig.sessionKeyPrefix || task.npcId}-dm-${targetUserId}`;
-    await taskManager.markTaskNudged(task.id, task.channelId);
-    const { response } = await openclawAdapter.executeWithGateway(gateway, {
-      agentId: npcConfig.agentId,
-      channelId: task.channelId,
-      sessionKey,
-      prompt: withTaskReminder(promptOverride ?? buildAutoExecutionPrompt(task)),
-    });
+    const prompt = withTaskReminder(promptOverride ?? buildAutoExecutionPrompt(task));
+    let response = "";
+
+    if (npcConfig.adapterType === openclawAdapter.type) {
+      if (!npcConfig.agentId) return;
+
+      const gateway = await getOrConnectGateway(task.channelId);
+      if (!gateway) return;
+
+      await taskManager.markTaskNudged(task.id, task.channelId);
+      ({ response } = await openclawAdapter.executeWithGateway(gateway, {
+        agentId: npcConfig.agentId,
+        channelId: task.channelId,
+        sessionKey,
+        prompt,
+      }));
+    } else if (adapterRegistry.has(npcConfig.adapterType)) {
+      const adapter = adapterRegistry.get(npcConfig.adapterType);
+
+      await taskManager.markTaskNudged(task.id, task.channelId);
+      ({ response } = await adapter.execute({
+        sessionKey,
+        prompt,
+        model: typeof npcConfig.adapterConfig.model === "string"
+          ? npcConfig.adapterConfig.model
+          : undefined,
+      }));
+    } else {
+      return;
+    }
+
     const parsed = parseNpcResponse(response);
 
     await processNpcTaskActions(io, parsed, {
@@ -601,38 +634,63 @@ async function streamNpcResponse(
   const { agentId, _channelId, sessionKeyPrefix, adapterType } = npcConfig;
   const responseEvent = emitEvent || "npc:response";
 
-  if (!agentId) {
-    emitNpcSystemResponse(socket, npcId, "no_agent");
-    return "";
-  }
-  if (!adapterRegistry.has(adapterType) || adapterType !== openclawAdapter.type) {
+  if (adapterType === "openclaw") {
+    if (!agentId) {
+      emitNpcSystemResponse(socket, npcId, "no_agent");
+      return "";
+    }
+
+    const gateway = await getOrConnectGateway(_channelId);
+    if (!gateway) {
+      emitNpcSystemResponse(socket, npcId, "gateway_not_connected");
+      return "";
+    }
+
+    const sessionKey = sessionKeyOverride || `${sessionKeyPrefix || npcId}-dm-${userId}`;
+    try {
+      const { response } = await openclawAdapter.executeWithGateway(gateway, {
+        agentId,
+        channelId: _channelId,
+        sessionKey,
+        prompt: message,
+        onDelta: (delta: string) => {
+          socket.emit(responseEvent, { npcId, chunk: delta, done: false });
+        },
+        attachments,
+      });
+      socket.emit(responseEvent, { npcId, chunk: "", done: true });
+      return response || "";
+    } catch (err) {
+      console.error("[npc] OpenClaw chatSend error:", err);
+      emitNpcSystemResponse(socket, npcId, "gateway_error");
+      return "";
+    }
+  } else if (adapterRegistry.has(adapterType)) {
+    const adapter = adapterRegistry.get(adapterType);
+    const sessionKey = sessionKeyOverride || `${sessionKeyPrefix || npcId}-dm-${userId}`;
+
+    try {
+      const { response } = await adapter.execute({
+        sessionKey,
+        prompt: message,
+        attachments,
+        model: typeof npcConfig.adapterConfig.model === "string"
+          ? npcConfig.adapterConfig.model
+          : undefined,
+        onDelta: (delta: string) => {
+          socket.emit(responseEvent, { npcId, chunk: delta, done: false });
+        },
+        timeoutMs: 180_000,
+      });
+      socket.emit(responseEvent, { npcId, chunk: "", done: true });
+      return response || "";
+    } catch (err) {
+      console.error("[npc] CLI adapter error for " + npcId + ":", err);
+      emitNpcSystemResponse(socket, npcId, "gateway_error");
+      return "";
+    }
+  } else {
     emitNpcSystemResponse(socket, npcId, "unsupported_adapter");
-    return "";
-  }
-
-  const gateway = await getOrConnectGateway(_channelId);
-  if (!gateway) {
-    emitNpcSystemResponse(socket, npcId, "gateway_not_connected");
-    return "";
-  }
-
-  const sessionKey = sessionKeyOverride || `${sessionKeyPrefix || npcId}-dm-${userId}`;
-  try {
-    const { response } = await openclawAdapter.executeWithGateway(gateway, {
-      agentId,
-      channelId: _channelId,
-      sessionKey,
-      prompt: message,
-      onDelta: (delta: string) => {
-        socket.emit(responseEvent, { npcId, chunk: delta, done: false });
-      },
-      attachments,
-    });
-    socket.emit(responseEvent, { npcId, chunk: "", done: true });
-    return response || "";
-  } catch (err) {
-    console.error(`[npc] OpenClaw chatSend error for ${npcId}:`, err);
-    emitNpcSystemResponse(socket, npcId, "gateway_error");
     return "";
   }
 }
