@@ -763,6 +763,9 @@ function GamePageInner() {
         if (action === "complete_manual") {
           showToastNotification(`task-complete-toast-${task.id}`, t("task.completeToast", { title: task.title }));
         }
+        if (action?.startsWith("move_") && action.endsWith("_in_progress") && task.npcName) {
+          showToastNotification(`task-autostart-toast-${task.id}`, t("task.autoStarted", { npcName: task.npcName, title: task.title }));
+        }
       });
 
       // Task: initial load — channel tasks (npcId null = channel-wide response)
@@ -2171,9 +2174,11 @@ function GamePageInner() {
 
       <TaskBoard
         channelId={channelId!}
+        socket={socketRef.current}
         isOpen={showTaskBoard}
         onClose={() => setShowTaskBoard(false)}
         tasks={allTasks}
+        npcs={channelNpcs.map((npc: any) => ({ id: npc.id, name: npc.name, isActive: Boolean(npc.openclawConfig) }))}
         onDeleteTask={deleteTask}
         onRequestReportTask={requestTaskReport}
         onResumeTask={resumeTask}

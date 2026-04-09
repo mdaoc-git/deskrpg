@@ -1,10 +1,21 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import TaskCard from "./TaskCard";
 import type { Task } from "./TaskCard";
+import TaskCreateForm from "./TaskCreateForm";
+import NpcAssignModal from "./NpcAssignModal";
+import DroppableColumn from "./DroppableColumn";
+import DraggableTaskCard from "./DraggableTaskCard";
 import { useT } from "@/lib/i18n";
-import { ClipboardList, X, Clock, Loader, CheckCircle, PauseCircle } from "lucide-react";
+import { ClipboardList, X, Clock, Loader, CheckCircle, PauseCircle, Inbox } from "lucide-react";
+import type { Socket } from "socket.io-client";
+
+interface NpcInfo {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
 
 interface TaskBoardProps {
   channelId: string;
@@ -15,9 +26,20 @@ interface TaskBoardProps {
   onResumeTask?: (taskId: string) => void;
   onCompleteTask?: (taskId: string) => void;
   tasks: Task[];
+  socket: Socket | null;
+  npcs?: NpcInfo[];
 }
 
+const COLUMNS = [
+  { status: "backlog", labelKey: "task.backlog", colorClass: "text-text-muted", bgClass: "bg-text-muted/20", Icon: Inbox },
+  { status: "pending", labelKey: "task.pending", colorClass: "text-npc", bgClass: "bg-npc/20", Icon: Clock },
+  { status: "in_progress", labelKey: "task.inProgress", colorClass: "text-danger", bgClass: "bg-danger/20", Icon: Loader },
+  { status: "stalled", labelKey: "task.stalled", colorClass: "text-warning", bgClass: "bg-warning/20", Icon: PauseCircle },
+  { status: "done", labelKey: "task.done", colorClass: "text-success", bgClass: "bg-success/20", Icon: CheckCircle },
+] as const;
+
 export default function TaskBoard({
+  channelId,
   isOpen,
   onClose,
   tasks,
@@ -25,36 +47,96 @@ export default function TaskBoard({
   onRequestReportTask,
   onResumeTask,
   onCompleteTask,
+  socket,
+  npcs = [],
 }: TaskBoardProps) {
   const t = useT();
   const [filterNpc, setFilterNpc] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [assignModal, setAssignModal] = useState<{
+    taskId: string;
+    taskTitle: string;
+    toStatus: string;
+  } | null>(null);
 
   const npcList = useMemo(() => {
     const map = new Map<string, string>();
     tasks.forEach((task) => {
-      const npcId = task.npcId;
-      const npcName = task.npcName || t("common.unknown");
-      if (npcId && !map.has(npcId)) map.set(npcId, npcName);
+      if (task.npcId && task.npcName && !map.has(task.npcId)) {
+        map.set(task.npcId, task.npcName);
+      }
     });
     return Array.from(map.entries());
-  }, [tasks, t]);
+  }, [tasks]);
 
   const filtered = filterNpc ? tasks.filter((t) => t.npcId === filterNpc) : tasks;
 
-  const pending = filtered.filter((t) => t.status === "pending");
-  const inProgress = filtered.filter((t) => t.status === "in_progress");
-  const stalled = filtered.filter((t) => t.status === "stalled");
-  const done = filtered.filter((t) => t.status === "complete" || t.status === "cancelled");
+  const groupedTasks = useMemo(() => ({
+    backlog: filtered.filter((t) => t.status === "backlog"),
+    pending: filtered.filter((t) => t.status === "pending"),
+    in_progress: filtered.filter((t) => t.status === "in_progress"),
+    stalled: filtered.filter((t) => t.status === "stalled"),
+    done: filtered.filter((t) => t.status === "complete" || t.status === "cancelled"),
+  }), [filtered]);
+
+  const npcOptions = useMemo(() => {
+    return npcs.map((npc) => ({
+      id: npc.id,
+      name: npc.name,
+      inProgressCount: tasks.filter((t) => t.npcId === npc.id && t.status === "in_progress").length,
+      pendingCount: tasks.filter((t) => t.npcId === npc.id && t.status === "pending").length,
+      isActive: npc.isActive,
+    }));
+  }, [npcs, tasks]);
+
+  const handleCreateTask = useCallback((title: string, summary: string) => {
+    if (!socket) return;
+    socket.emit("task:create", { channelId, title, summary: summary || undefined });
+    setShowCreateForm(false);
+  }, [socket, channelId]);
+
+  const handleDrop = useCallback((taskId: string, fromStatus: string, toStatus: string) => {
+    if (!socket) return;
+
+    const actualToStatus = toStatus === "done" ? "complete" : toStatus;
+    const actualFromStatus = fromStatus === "done" ? "complete" : fromStatus;
+    if (actualFromStatus === actualToStatus) return;
+
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const needsNpc = !task.npcId && actualToStatus !== "backlog" && actualToStatus !== "cancelled";
+    if (needsNpc) {
+      setAssignModal({ taskId, taskTitle: task.title, toStatus: actualToStatus });
+      return;
+    }
+
+    socket.emit("task:move", { taskId, toStatus: actualToStatus });
+  }, [socket, tasks]);
+
+  const handleAssignFromModal = useCallback((npcId: string) => {
+    if (!socket || !assignModal) return;
+    socket.emit("task:move", { taskId: assignModal.taskId, toStatus: assignModal.toStatus, npcId });
+    setAssignModal(null);
+  }, [socket, assignModal]);
+
+  const handleAssignClick = useCallback((taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    setAssignModal({ taskId, taskTitle: task.title, toStatus: "pending" });
+  }, [tasks]);
 
   if (!isOpen) return null;
 
   return (
     <div className="theme-game fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="bg-surface-raised rounded-xl border border-border w-[90vw] max-w-[900px] h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-raised rounded-xl border border-border w-[95vw] max-w-[1100px] h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="px-4 py-3 border-b border-border flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <span className="text-title text-text flex items-center gap-1.5"><ClipboardList className="w-4 h-4" />{t("task.board")}</span>
+            <span className="text-title text-text flex items-center gap-1.5">
+              <ClipboardList className="w-4 h-4" />{t("task.board")}
+            </span>
             <div className="flex gap-1">
               <button
                 onClick={() => setFilterNpc(null)}
@@ -81,60 +163,72 @@ export default function TaskBoard({
         </div>
 
         {/* Kanban Columns */}
-        <div className="flex-1 flex gap-3 p-3 overflow-hidden">
-          {/* Pending */}
-          <div className="flex-1 bg-surface rounded-lg p-2.5 flex flex-col">
-            <div className="text-[11px] text-npc font-bold mb-2 flex justify-between">
-              <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{t("task.pending")}</span>
-              <span className="bg-npc/20 px-1.5 rounded">{pending.length}</span>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-2">
-              {pending.map((t) => (
-                <TaskCard key={t.id} task={t} showNpcName compact onDelete={onDeleteTask} onRequestReport={onRequestReportTask} onResume={onResumeTask} onComplete={onCompleteTask} />
-              ))}
-            </div>
-          </div>
+        <div className="flex-1 flex gap-2 p-3 overflow-hidden">
+          {COLUMNS.map((col) => {
+            const colTasks = groupedTasks[col.status as keyof typeof groupedTasks] || [];
+            return (
+              <DroppableColumn
+                key={col.status}
+                status={col.status}
+                onDrop={handleDrop}
+                header={
+                  <div className={`text-[11px] ${col.colorClass} font-bold mb-2 flex justify-between`}>
+                    <span className="flex items-center gap-1">
+                      <col.Icon className="w-3.5 h-3.5" />{t(col.labelKey)}
+                    </span>
+                    <span className={`${col.bgClass} px-1.5 rounded`}>{colTasks.length}</span>
+                  </div>
+                }
+              >
+                {col.status === "backlog" && (
+                  showCreateForm ? (
+                    <TaskCreateForm
+                      onSubmit={handleCreateTask}
+                      onCancel={() => setShowCreateForm(false)}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setShowCreateForm(true)}
+                      className="w-full border border-dashed border-primary/50 rounded-lg py-2 text-[11px] text-primary hover:border-primary hover:bg-primary/5 transition mb-1"
+                    >
+                      + {t("task.createNew")}
+                    </button>
+                  )
+                )}
+                {colTasks.map((task) => (
+                  <DraggableTaskCard key={task.id} taskId={task.id} status={col.status}>
+                    <TaskCard
+                      task={task}
+                      showNpcName
+                      compact
+                      onDelete={onDeleteTask}
+                      onRequestReport={onRequestReportTask}
+                      onResume={onResumeTask}
+                      onComplete={onCompleteTask}
+                      onAssign={handleAssignClick}
+                    />
+                  </DraggableTaskCard>
+                ))}
+              </DroppableColumn>
+            );
+          })}
+        </div>
 
-          {/* In Progress */}
-          <div className="flex-1 bg-surface rounded-lg p-2.5 flex flex-col">
-            <div className="text-[11px] text-danger font-bold mb-2 flex justify-between">
-              <span className="flex items-center gap-1"><Loader className="w-3.5 h-3.5" />{t("task.inProgress")}</span>
-              <span className="bg-danger/20 px-1.5 rounded">{inProgress.length}</span>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-2">
-              {inProgress.map((t) => (
-                <TaskCard key={t.id} task={t} showNpcName compact onDelete={onDeleteTask} onRequestReport={onRequestReportTask} onResume={onResumeTask} onComplete={onCompleteTask} />
-              ))}
-            </div>
-          </div>
-
-          {/* Stalled */}
-          <div className="flex-1 bg-surface rounded-lg p-2.5 flex flex-col">
-            <div className="text-[11px] text-warning font-bold mb-2 flex justify-between">
-              <span className="flex items-center gap-1"><PauseCircle className="w-3.5 h-3.5" />{t("task.stalled")}</span>
-              <span className="bg-warning/20 px-1.5 rounded">{stalled.length}</span>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-2">
-              {stalled.map((t) => (
-                <TaskCard key={t.id} task={t} showNpcName compact onDelete={onDeleteTask} onRequestReport={onRequestReportTask} onResume={onResumeTask} onComplete={onCompleteTask} />
-              ))}
-            </div>
-          </div>
-
-          {/* Done */}
-          <div className="flex-1 bg-surface rounded-lg p-2.5 flex flex-col">
-            <div className="text-[11px] text-success font-bold mb-2 flex justify-between">
-              <span className="flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5" />{t("task.done")}</span>
-              <span className="bg-success/20 px-1.5 rounded">{done.length}</span>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-2">
-              {done.map((t) => (
-                <TaskCard key={t.id} task={t} showNpcName compact onDelete={onDeleteTask} onRequestReport={onRequestReportTask} onResume={onResumeTask} onComplete={onCompleteTask} />
-              ))}
-            </div>
-          </div>
+        {/* Drag hint */}
+        <div className="px-4 py-2 text-center text-[10px] text-text-dim border-t border-border">
+          {t("task.dragHint")}
         </div>
       </div>
+
+      {/* NPC Assign Modal */}
+      {assignModal && (
+        <NpcAssignModal
+          taskTitle={assignModal.taskTitle}
+          npcs={npcOptions}
+          onAssign={handleAssignFromModal}
+          onCancel={() => setAssignModal(null)}
+        />
+      )}
     </div>
   );
 }

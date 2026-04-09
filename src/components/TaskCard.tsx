@@ -1,7 +1,7 @@
 "use client";
 
 import { useT } from "@/lib/i18n";
-import { Clock, Circle, Check, X as XIcon, Bot, PauseCircle } from "lucide-react";
+import { Clock, Circle, Check, X as XIcon, Bot, PauseCircle, Inbox } from "lucide-react";
 import Badge from "./ui/Badge";
 
 interface Task {
@@ -30,10 +30,12 @@ interface TaskCardProps {
   onDelete?: (taskId: string) => void;
   onRequestReport?: (taskId: string) => void;
   onResume?: (taskId: string) => void;
+  onAssign?: (taskId: string) => void;
   onComplete?: (taskId: string) => void;
 }
 
 const STATUS_CONFIG: Record<string, { color: string; border: string; icon: React.ReactNode; labelKey: string }> = {
+  backlog: { labelKey: "task.backlog", color: "text-text-muted", border: "border-l-text-dim", icon: <Inbox className="w-3 h-3 inline" /> },
   pending: { labelKey: "task.pending", color: "text-npc", border: "border-l-npc", icon: <Clock className="w-3 h-3 inline" /> },
   in_progress: { labelKey: "task.inProgress", color: "text-danger", border: "border-l-danger", icon: <Circle className="w-3 h-3 inline" /> },
   stalled: { labelKey: "task.stalled", color: "text-warning", border: "border-l-warning", icon: <PauseCircle className="w-3 h-3 inline" /> },
@@ -48,6 +50,7 @@ export default function TaskCard({
   onDelete,
   onRequestReport,
   onResume,
+  onAssign,
   onComplete,
 }: TaskCardProps) {
   const t = useT();
@@ -134,12 +137,25 @@ export default function TaskCard({
             {t("task.resume")}
           </button>
         ) : null}
+        {task.status === "backlog" && onAssign ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onAssign(task.id); }}
+            className="rounded bg-primary/20 px-2 py-1 text-[10px] text-primary hover:bg-primary/30"
+          >
+            {t("task.assign")}
+          </button>
+        ) : null}
       </div>
       <div className="flex justify-between items-center text-[9px] text-text-dim">
-        {showNpcName && npcName && (
-          <Badge variant="npc" size="sm">
-            <Bot className="w-3 h-3" />{npcName}
-          </Badge>
+        {showNpcName && (
+          npcName ? (
+            <Badge variant="npc" size="sm">
+              <Bot className="w-3 h-3" />{npcName}
+            </Badge>
+          ) : (
+            <span className="text-[9px] text-text-dim">{t("task.unassigned")}</span>
+          )
         )}
         <span>{formatTimestamp(updatedAt)}</span>
       </div>

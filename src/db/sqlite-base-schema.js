@@ -226,7 +226,7 @@ function ensureSqliteBaseSchema(sqlite) {
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY NOT NULL,
       channel_id TEXT NOT NULL REFERENCES channels(id),
-      npc_id TEXT NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+      npc_id TEXT REFERENCES npcs(id) ON DELETE CASCADE,
       assigner_id TEXT NOT NULL REFERENCES characters(id),
       npc_task_id TEXT NOT NULL,
       title TEXT NOT NULL,
