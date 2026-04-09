@@ -35,8 +35,11 @@ function nowForDb() {
   return (isPostgres ? new Date() : new Date().toISOString()) as unknown as Date;
 }
 
+const DEV_JWT_SECRET = "deskrpg-dev-jwt-secret-do-not-use-in-production";
+
 function getGatewayCipherKey() {
-  const source = process.env.INTERNAL_RPC_SECRET || process.env.JWT_SECRET;
+  const source = process.env.INTERNAL_RPC_SECRET || process.env.JWT_SECRET
+    || (process.env.NODE_ENV !== "production" ? DEV_JWT_SECRET : "");
   if (!source) {
     throw new Error("Missing JWT_SECRET or INTERNAL_RPC_SECRET for gateway token encryption");
   }
