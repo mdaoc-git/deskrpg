@@ -355,6 +355,19 @@ export default function ChannelSettingsModal({
         setGatewayCanEditCredentials(data?.gatewayConfig?.canEditCredentials !== false);
         setGatewayUrl(data?.gatewayConfig?.url ?? gatewayUrl);
         setGatewayToken(data?.gatewayConfig?.token ?? gatewayToken);
+        if (nextGatewayId) {
+          setGatewayOptions((prev) => {
+            if (prev.some((item) => item.id === nextGatewayId)) return prev;
+            return [{
+              id: nextGatewayId,
+              displayName: data?.gatewayConfig?.displayName || data?.gatewayConfig?.url || nextGatewayId,
+              baseUrl: data?.gatewayConfig?.url || "",
+              canEditCredentials: data?.gatewayConfig?.canEditCredentials !== false,
+              isOwner: data?.gatewayConfig?.canEditCredentials !== false,
+              shareRole: null,
+            }, ...prev];
+          });
+        }
         onUpdated({
           gatewayConfig: {
             gatewayId: data?.gatewayConfig?.gatewayId ?? gatewayId,
