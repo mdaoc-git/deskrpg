@@ -8,6 +8,13 @@
       "when": 1774998891487,
       "tag": "0000_big_karnak",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775705194647,
+      "tag": "0001_furry_khan",
+      "breakpoints": true
     }
   ]
 }
