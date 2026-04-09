@@ -223,6 +223,8 @@ export const npcs = pgTable("npcs", {
   direction: varchar("direction", { length: 10 }).default("down"),
   appearance: jsonb("appearance").notNull(),
   openclawConfig: jsonb("openclaw_config").notNull(),
+  adapterType: varchar("adapter_type", { length: 20 }).notNull().default("openclaw"),
+  adapterConfig: jsonb("adapter_config"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 }, (table) => [

@@ -1,9 +1,12 @@
 import { MEETING_NPC_STREAM_EVENT } from "./meeting-socket";
+import { OpenClawAdapter } from "../lib/adapters/openclaw-adapter.js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { MeetingBroker } = require("../lib/meeting-broker.js") as {
   MeetingBroker: new (config: MeetingBrokerConfig, callbacks: MeetingBrokerCallbacks) => MeetingBrokerLike;
 };
+
+const openclawAdapter = new OpenClawAdapter();
 
 type MeetingRoom = {
   participants: Set<string>;
@@ -62,6 +65,7 @@ type MeetingBrokerConfig = {
   gateway: unknown;
   sessionKeyPrefix: string;
   meetingId: string;
+  adapterResolver?: (npcId: string) => unknown;
   settings: Record<string, unknown>;
   quota: {
     maxTotalTurns: number;
@@ -245,6 +249,7 @@ export function registerMeetingDiscussionHandlers({
         gateway,
         sessionKeyPrefix: aiNpcs[0].sessionKeyPrefix || channelId.slice(0, 8),
         meetingId,
+        adapterResolver: (_npcId: string) => openclawAdapter,
         settings: settings || {},
         quota: {
           maxTotalTurns: settings?.maxTotalTurns || 50,

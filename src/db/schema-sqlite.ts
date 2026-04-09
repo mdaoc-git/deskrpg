@@ -223,6 +223,8 @@ export const npcs = sqliteTable("npcs", {
   direction: text("direction").default("down"),
   appearance: text("appearance").notNull(),
   openclawConfig: text("openclaw_config").notNull(),
+  adapterType: text("adapter_type").notNull().default("openclaw"),
+  adapterConfig: text("adapter_config"),
   createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
   updatedAt: text("updated_at").$defaultFn(() => new Date().toISOString()),
 }, (table) => [

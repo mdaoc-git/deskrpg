@@ -217,6 +217,8 @@ function ensureSqliteBaseSchema(sqlite) {
       direction TEXT DEFAULT 'down',
       appearance TEXT NOT NULL,
       openclaw_config TEXT NOT NULL,
+      adapter_type TEXT NOT NULL DEFAULT 'openclaw',
+      adapter_config TEXT,
       created_at TEXT,
       updated_at TEXT,
       UNIQUE(channel_id, position_x, position_y)

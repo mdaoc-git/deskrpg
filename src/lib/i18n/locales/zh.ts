@@ -1327,6 +1327,7 @@ const zh: Record<string, string> = {
   "npc.noAgent": "此NPC未连接AI代理",
   "npc.gatewayNotConnected": "网关未连接",
   "npc.gatewayError": "AI网关错误",
+  "npc.unsupportedAdapter": "此NPC使用了不受支持的适配器。",
   "npc.notFound": "找不到NPC",
   "npc.waitBeforeSending": "请稍后再发送",
   "npc.unsupportedFileType": "不支持的文件类型。",

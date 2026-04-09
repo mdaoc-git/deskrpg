@@ -1327,6 +1327,7 @@ const en: Record<string, string> = {
   "npc.noAgent": "This NPC has no AI agent connected",
   "npc.gatewayNotConnected": "Gateway not connected",
   "npc.gatewayError": "AI Gateway error",
+  "npc.unsupportedAdapter": "This NPC uses an unsupported adapter.",
   "npc.notFound": "NPC not found",
   "npc.waitBeforeSending": "Wait before sending.",
   "npc.unsupportedFileType": "Unsupported file type.",

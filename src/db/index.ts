@@ -342,6 +342,10 @@ export function ensureSqliteCompatibility(sqlite: BetterSqlite3.Database) {
     "ALTER TABLE tasks ADD COLUMN stalled_at TEXT",
     "ALTER TABLE tasks ADD COLUMN stalled_reason TEXT",
   ]);
+  applySqliteAlterStatements(sqlite, "npcs", [
+    "ALTER TABLE npcs ADD COLUMN adapter_type TEXT NOT NULL DEFAULT 'openclaw'",
+    "ALTER TABLE npcs ADD COLUMN adapter_config TEXT",
+  ]);
 
   dedupeSqliteGroupJoinRequests(sqlite);
   sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS group_join_requests_group_user_unique ON group_join_requests(group_id, user_id)");

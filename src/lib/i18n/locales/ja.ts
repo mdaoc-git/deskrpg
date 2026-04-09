@@ -1327,6 +1327,7 @@ const ja: Record<string, string> = {
   "npc.noAgent": "このNPCにはAIエージェントが接続されていません",
   "npc.gatewayNotConnected": "ゲートウェイ未接続",
   "npc.gatewayError": "AIゲートウェイエラー",
+  "npc.unsupportedAdapter": "このNPCはサポートされていないアダプターを使用しています。",
   "npc.notFound": "NPCが見つかりません",
   "npc.waitBeforeSending": "しばらくお待ちください",
   "npc.unsupportedFileType": "サポートされていないファイル形式です。",

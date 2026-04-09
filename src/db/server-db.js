@@ -279,6 +279,9 @@ function ensureSqliteCompatibility(sqlite) {
     CREATE INDEX IF NOT EXISTS idx_npc_reports_status ON npc_reports(status);
   `);
 
+  try { sqlite.exec("ALTER TABLE npcs ADD COLUMN adapter_type TEXT NOT NULL DEFAULT 'openclaw'"); } catch {}
+  try { sqlite.exec("ALTER TABLE npcs ADD COLUMN adapter_config TEXT"); } catch {}
+
   applySqliteAlterStatements(sqlite, "users", [
     "ALTER TABLE users ADD COLUMN system_role TEXT NOT NULL DEFAULT 'user'",
   ]);
@@ -512,6 +515,8 @@ if (isPostgres) {
     direction: varchar("direction", { length: 10 }).default("down"),
     appearance: jsonb("appearance").notNull(),
     openclawConfig: jsonb("openclaw_config").notNull(),
+    adapterType: varchar("adapter_type", { length: 20 }).notNull().default("openclaw"),
+    adapterConfig: jsonb("adapter_config"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   }, (table) => [
@@ -801,6 +806,8 @@ if (isPostgres) {
     direction: text("direction").default("down"),
     appearance: text("appearance").notNull(),
     openclawConfig: text("openclaw_config").notNull(),
+    adapterType: text("adapter_type").notNull().default("openclaw"),
+    adapterConfig: text("adapter_config"),
     createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
     updatedAt: text("updated_at").$defaultFn(() => new Date().toISOString()),
   }, (table) => [
