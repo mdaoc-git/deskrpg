@@ -78,6 +78,13 @@ export function ensureDeskRpgHome(options: DeskRpgHomeOptions = {}) {
     envText = upsertEnvLine(envText, "JWT_SECRET", crypto.randomBytes(24).toString("hex"));
   }
 
+  // Standalone (non-Docker) runs on HTTP localhost — secure cookies must be off
+  // so browsers accept the Set-Cookie header.
+  const hasCookieSecure = /^#?\s*COOKIE_SECURE=.*$/m.test(envText);
+  if (!hasCookieSecure) {
+    envText = upsertEnvLine(envText, "COOKIE_SECURE", "false");
+  }
+
   fs.writeFileSync(envPath, envText);
 
   return {
