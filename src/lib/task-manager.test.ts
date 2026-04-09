@@ -15,8 +15,10 @@ const { TaskManager } = require("./task-manager.js") as {
   ) => {
     handleTaskAction: (...args: unknown[]) => Promise<Record<string, unknown> | null>;
     getTaskById: (taskId: string, channelId: string) => Promise<Record<string, unknown> | null>;
-    moveTask: (taskId: string, channelId: string, toStatus: string, npcId: string | null) => Promise<Record<string, unknown> | null>;
+    moveTask: (taskId: string, channelId: string, toStatus: string, npcId: string | null, options?: { expectedFromStatus?: string }) => Promise<Record<string, unknown> | null>;
     createBacklogTask: (channelId: string, assignerId: string, title: string, summary: string | null) => Promise<Record<string, unknown>>;
+    hasInProgressTask: (npcId: string, channelId: string) => Promise<boolean>;
+    getNextPendingTask: (npcId: string, channelId: string) => Promise<Record<string, unknown> | null>;
     markTaskNudged: (taskId: string, channelId: string) => Promise<Record<string, unknown> | null>;
     markTaskStalled: (taskId: string, channelId: string, reason?: string) => Promise<Record<string, unknown> | null>;
     resumeTask: (taskId: string, channelId: string) => Promise<Record<string, unknown> | null>;
@@ -274,4 +276,77 @@ test("moveTask: rejects non-backlog/cancelled without npcId when task unassigned
     () => mgr.moveTask(task.id, "channel-1", "pending", null),
     { message: /npcId required/ },
   );
+});
+
+// ── New feature tests: race condition guard, hasInProgressTask, getNextPendingTask ──
+
+test("moveTask: expectedFromStatus guards against concurrent promotion", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Race test", null);
+  // Move to pending first
+  await mgr.moveTask(task.id, "channel-1", "pending", "npc-1");
+
+  // First promotion succeeds
+  const first = await mgr.moveTask(task.id, "channel-1", "in_progress", "npc-1", { expectedFromStatus: "pending" });
+  assert.notEqual(first, null);
+  assert.equal(first?.status, "in_progress");
+
+  // Second attempt with expectedFromStatus: "pending" should return null (already promoted)
+  const second = await mgr.moveTask(task.id, "channel-1", "in_progress", "npc-1", { expectedFromStatus: "pending" });
+  assert.equal(second, null);
+});
+
+test("moveTask: atomic WHERE prevents stale status update", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Atomic test", null);
+  await mgr.moveTask(task.id, "channel-1", "pending", "npc-1");
+  // Move to in_progress
+  await mgr.moveTask(task.id, "channel-1", "in_progress", "npc-1");
+
+  // Try to move from "pending" but it's already "in_progress" — should return null
+  const result = await mgr.moveTask(task.id, "channel-1", "complete", "npc-1", { expectedFromStatus: "pending" });
+  assert.equal(result, null);
+
+  // Without expectedFromStatus, move should succeed
+  const result2 = await mgr.moveTask(task.id, "channel-1", "complete", "npc-1");
+  assert.notEqual(result2, null);
+  assert.equal(result2?.status, "complete");
+});
+
+test("hasInProgressTask: returns true when NPC has active task", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Active task", null);
+  await mgr.moveTask(task.id, "channel-1", "in_progress", "npc-1");
+
+  const busy = await mgr.hasInProgressTask("npc-1", "channel-1");
+  assert.equal(busy, true);
+});
+
+test("hasInProgressTask: returns false when NPC has no active task", async () => {
+  const { mgr } = createTaskTestDb();
+  const task = await mgr.createBacklogTask("channel-1", "character-1", "Pending task", null);
+  await mgr.moveTask(task.id, "channel-1", "pending", "npc-1");
+
+  const busy = await mgr.hasInProgressTask("npc-1", "channel-1");
+  assert.equal(busy, false);
+});
+
+test("getNextPendingTask: returns a pending task for the NPC", async () => {
+  const { mgr } = createTaskTestDb();
+  const t1 = await mgr.createBacklogTask("channel-1", "character-1", "Pending task", null);
+  await mgr.moveTask(t1.id, "channel-1", "pending", "npc-1");
+  // Create another non-pending task to ensure filtering works
+  const t2 = await mgr.createBacklogTask("channel-1", "character-1", "In progress", null);
+  await mgr.moveTask(t2.id, "channel-1", "in_progress", "npc-1");
+
+  const next = await mgr.getNextPendingTask("npc-1", "channel-1");
+  assert.notEqual(next, null);
+  assert.equal(next?.title, "Pending task");
+  assert.equal(next?.status, "pending");
+});
+
+test("getNextPendingTask: returns null when no pending tasks", async () => {
+  const { mgr } = createTaskTestDb();
+  const next = await mgr.getNextPendingTask("npc-1", "channel-1");
+  assert.equal(next, null);
 });
