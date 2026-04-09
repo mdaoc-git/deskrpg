@@ -770,8 +770,10 @@ async function persistMeetingMinutes(input: {
 // JWT helpers
 // ---------------------------------------------------------------------------
 
+const DEV_JWT_SECRET = "deskrpg-dev-jwt-secret-do-not-use-in-production";
+
 function getJwtSecret() {
-  const secret = process.env.JWT_SECRET;
+  const secret = process.env.JWT_SECRET || (process.env.NODE_ENV !== "production" ? DEV_JWT_SECRET : "");
   if (!secret) throw new Error("Missing JWT_SECRET");
   return new TextEncoder().encode(secret);
 }
@@ -1313,7 +1315,6 @@ export function setupSocketHandlers(io: Server) {
             const autoStartMessage = withTaskReminder(`${task.title} 업무를 시작합니다.`, getSocketLocale(socket));
             const messageToSend = `${taskSessionPrompt}\n\n${autoStartMessage}`;
             const sessionKey = `${npcConfig.sessionKeyPrefix || task.npcId}-task-${task.npcTaskId}`;
-
             const response = await streamNpcResponse(
               socket,
               task.npcId,
