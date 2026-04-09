@@ -27,6 +27,8 @@ services:
       - "3103:3001"
     volumes:
       - ./public/assets:/app/public/assets
+      - deskrpg-users:/var/deskrpg/users
+      - deskrpg-workspaces:/var/deskrpg/workspaces
     environment:
       DATABASE_URL: postgresql://deskrpg:${POSTGRES_PASSWORD:-deskrpg_dev_pw}@deskrpg-db:5432/deskrpg
       JWT_SECRET: ${JWT_SECRET}
@@ -37,3 +39,5 @@ services:
 
 volumes:
   deskrpg-pgdata:
+  deskrpg-users:
+  deskrpg-workspaces:
