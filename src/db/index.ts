@@ -9,7 +9,7 @@ const { ensureSqliteBaseSchema } = require("./sqlite-base-schema.js") as {
   ensureSqliteBaseSchema: (sqlite: BetterSqlite3.Database) => void;
 };
 
-const DB_TYPE = (process.env.DB_TYPE || "postgresql").toLowerCase();
+const DB_TYPE = (process.env.DB_TYPE || (process.env.DATABASE_URL ? "postgresql" : "sqlite")).toLowerCase();
 export const isPostgres = DB_TYPE === "postgresql" || DB_TYPE === "postgres";
 
 export function getDefaultSqlitePath() {
