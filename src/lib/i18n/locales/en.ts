@@ -170,6 +170,8 @@ const en: Record<string, string> = {
   "npc.default": "Default NPC",
   "npc.name": "NPC Name",
   "npc.namePlaceholder": "AI Assistant",
+  "npc.adapterType": "AI Engine",
+  "npc.cliAdapterNote": "This NPC will use the selected CLI tool. Make sure the tool is installed and a provider is configured.",
   "npc.agent": "Agent",
   "npc.selectExisting": "Select Existing",
   "npc.newAgent": "New Agent",

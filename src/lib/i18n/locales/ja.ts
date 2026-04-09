@@ -170,6 +170,8 @@ const ja: Record<string, string> = {
   "npc.default": "デフォルトNPC",
   "npc.name": "NPC名",
   "npc.namePlaceholder": "AIアシスタント",
+  "npc.adapterType": "AIエンジン",
+  "npc.cliAdapterNote": "このNPCは選択したCLIツールを使用します。ツールがインストールされ、プロバイダが設定されていることを確認してください。",
   "npc.agent": "エージェント",
   "npc.selectExisting": "既存を選択",
   "npc.newAgent": "新規エージェント",

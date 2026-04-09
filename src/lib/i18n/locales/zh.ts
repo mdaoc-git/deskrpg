@@ -170,6 +170,8 @@ const zh: Record<string, string> = {
   "npc.default": "默认NPC",
   "npc.name": "NPC名称",
   "npc.namePlaceholder": "AI助手",
+  "npc.adapterType": "AI引擎",
+  "npc.cliAdapterNote": "此NPC将使用所选CLI工具。请确保已安装工具并配置了提供商。",
   "npc.agent": "代理",
   "npc.selectExisting": "选择现有",
   "npc.newAgent": "新建代理",

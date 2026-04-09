@@ -74,10 +74,11 @@ interface NpcHireModalProps {
     identity?: string;
     soul?: string;
     locale?: string;
+    adapterType?: string;
   }) => void;
   onSaveEdit?: (
     npcId: string,
-    updates: { presetId?: string; name?: string; persona?: string; appearance?: unknown; direction?: string; identity?: string; soul?: string; agentId?: string; agentAction?: "select" | "create"; locale?: string },
+    updates: { presetId?: string; name?: string; persona?: string; appearance?: unknown; direction?: string; identity?: string; soul?: string; agentId?: string; agentAction?: "select" | "create"; locale?: string; adapterType?: string },
   ) => void;
   editingNpc?: {
     id: string;
@@ -89,6 +90,8 @@ interface NpcHireModalProps {
   } | null;
   currentNpcCount: number;
   hasGateway: boolean;
+  availableAdapters?: string[];
+  channelDefaultAdapter?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +107,8 @@ export default function NpcHireModal({
   editingNpc,
   currentNpcCount,
   hasGateway,
+  availableAdapters,
+  channelDefaultAdapter,
 }: NpcHireModalProps) {
   const t = useT();
   const { locale } = useLocale();
@@ -116,6 +121,9 @@ export default function NpcHireModal({
     isItemCompatible, getItemBodyTypes, compatibleCount,
     randomize, buildAppearance: buildAppearanceFromHook,
   } = useCharacterAppearance();
+
+  // --- Adapter selection ---
+  const [adapterType, setAdapterType] = useState(channelDefaultAdapter || "openclaw");
 
   // --- NPC-specific state ---
   const [name, setName] = useState("");
@@ -442,7 +450,7 @@ export default function NpcHireModal({
         if (createNewAgent && newAgentId.trim()) { agentId = newAgentId.trim(); agentAction = "create"; }
         else if (selectedAgentId) { agentId = selectedAgentId; agentAction = selectedAgentId !== editingNpc!.agentId ? "select" : undefined; }
       }
-      onSaveEdit(editingNpc!.id, { presetId: activePresetId, name: name.trim(), persona: personaCompat, appearance, direction, identity: identity.trim(), soul: soul.trim(), agentId, agentAction, locale });
+      onSaveEdit(editingNpc!.id, { presetId: activePresetId, name: name.trim(), persona: personaCompat, appearance, direction, identity: identity.trim(), soul: soul.trim(), agentId, agentAction, locale, adapterType });
     } else {
       let agentId: string | undefined;
       let agentAction: "select" | "create" | undefined;
@@ -450,7 +458,7 @@ export default function NpcHireModal({
         if (createNewAgent && newAgentId.trim()) { agentId = newAgentId.trim(); agentAction = "create"; }
         else if (selectedAgentId) { agentId = selectedAgentId; agentAction = "select"; }
       }
-      onPlaceOnMap({ presetId: activePresetId, name: name.trim(), persona: personaCompat, appearance, direction, agentId, agentAction, identity: identity.trim(), soul: soul.trim(), locale });
+      onPlaceOnMap({ presetId: activePresetId, name: name.trim(), persona: personaCompat, appearance, direction, agentId, agentAction, identity: identity.trim(), soul: soul.trim(), locale, adapterType });
     }
   };
 
@@ -488,8 +496,35 @@ export default function NpcHireModal({
               />
             </div>
 
-            {/* AI Agent Section */}
-            <AgentSection
+            {/* Adapter Type Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">{t("npc.adapterType")}</label>
+              <select
+                value={adapterType}
+                onChange={(e) => setAdapterType(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {(availableAdapters || ["openclaw"]).map((type) => (
+                  <option key={type} value={type}>
+                    {type === "openclaw" ? "OpenClaw Gateway" :
+                     type === "claude" ? "Claude Code" :
+                     type === "codex" ? "Codex CLI" :
+                     type === "gemini" ? "Gemini CLI" :
+                     type === "opencode" ? "OpenCode" : type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* CLI adapter note */}
+            {adapterType !== "openclaw" && (
+              <div className="text-xs text-gray-400 bg-gray-800 rounded p-3">
+                <p>{t("npc.cliAdapterNote")}</p>
+              </div>
+            )}
+
+            {/* AI Agent Section (OpenClaw only) */}
+            {adapterType === "openclaw" && <AgentSection
               hasGateway={hasGateway}
               isEdit={isEdit}
               gatewayAgents={gatewayAgents} setGatewayAgents={setGatewayAgents}
@@ -503,7 +538,7 @@ export default function NpcHireModal({
               validateNewAgentId={validateNewAgentId}
               channelId={channelId}
               t={t}
-            />
+            />}
 
             {/* Persona Section */}
             <PersonaSection

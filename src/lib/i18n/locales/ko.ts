@@ -170,6 +170,8 @@ const ko: Record<string, string> = {
   "npc.default": "기본 NPC",
   "npc.name": "NPC 이름",
   "npc.namePlaceholder": "AI 어시스턴트",
+  "npc.adapterType": "AI 엔진",
+  "npc.cliAdapterNote": "이 NPC는 선택한 CLI 도구를 사용합니다. 도구가 설치되어 있고 제공자가 설정되어 있는지 확인하세요.",
   "npc.agent": "에이전트",
   "npc.selectExisting": "기존 선택",
   "npc.newAgent": "새 에이전트",
