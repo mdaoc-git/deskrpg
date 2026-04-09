@@ -96,6 +96,7 @@ COPY --from=builder /app/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN sed -i 's/\r$//' ./docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
 ENV DESKRPG_HOME=/app/data
+ENV INTERNAL_HOSTNAME="0.0.0.0"
 
 USER nextjs
 EXPOSE 3000 3001
