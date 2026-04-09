@@ -1300,6 +1300,7 @@ const zh: Record<string, string> = {
   "chat.moveCloser": "请靠近...",
   "chat.cooldown": "稍等...",
   "chat.responding": "回复中...",
+  "chat.newConversation": "新对话",
   "chat.disconnected": "已断开连接",
   "chat.attachFile": "附加文件",
   "chat.removeFile": "移除文件",

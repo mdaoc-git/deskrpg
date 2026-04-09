@@ -1301,6 +1301,7 @@ const ko: Record<string, string> = {
   "chat.moveCloser": "가까이 이동하세요...",
   "chat.cooldown": "잠시 후...",
   "chat.responding": "응답 중...",
+  "chat.newConversation": "새 대화",
   "chat.disconnected": "연결 끊김",
   "chat.attachFile": "파일 첨부",
   "chat.removeFile": "파일 제거",

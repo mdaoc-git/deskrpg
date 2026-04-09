@@ -1300,6 +1300,7 @@ const ja: Record<string, string> = {
   "chat.moveCloser": "近づいてください...",
   "chat.cooldown": "少々お待ちを...",
   "chat.responding": "応答中...",
+  "chat.newConversation": "新しい会話",
   "chat.disconnected": "接続切れ",
   "chat.attachFile": "ファイルを添付",
   "chat.removeFile": "ファイルを削除",

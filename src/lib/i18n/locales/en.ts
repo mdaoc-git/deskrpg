@@ -1300,6 +1300,7 @@ const en: Record<string, string> = {
   "chat.moveCloser": "Move closer to chat...",
   "chat.cooldown": "Wait...",
   "chat.responding": "Responding...",
+  "chat.newConversation": "New chat",
   "chat.disconnected": "Disconnected",
   "chat.attachFile": "Attach file",
   "chat.removeFile": "Remove file",
