@@ -19,6 +19,9 @@ const {
 
 const dir = __dirname;
 process.env.NODE_ENV = "production";
+// Standalone server runs on HTTP localhost — default to insecure cookies
+// so browsers accept Set-Cookie. Override with COOKIE_SECURE=true for HTTPS.
+if (!process.env.COOKIE_SECURE) process.env.COOKIE_SECURE = "false";
 process.chdir(dir);
 
 const currentPort = parseInt(process.env.PORT, 10) || 3000;
