@@ -9,7 +9,7 @@ export function isSecureCookie(): boolean {
 
 const JWT_EXPIRY = "7d";
 
-const DEV_JWT_SECRET = "deskrpg-dev-jwt-secret-do-not-use-in-production";
+import { DEV_JWT_SECRET } from "./dev-constants";
 
 function getSecret() {
   const secret = process.env.JWT_SECRET || (process.env.NODE_ENV !== "production" ? DEV_JWT_SECRET : "");
