@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import TaskCard from "./TaskCard";
 import type { Task } from "./TaskCard";
 import TaskCreateForm from "./TaskCreateForm";
@@ -8,7 +8,7 @@ import NpcAssignModal from "./NpcAssignModal";
 import DroppableColumn from "./DroppableColumn";
 import DraggableTaskCard from "./DraggableTaskCard";
 import { useT } from "@/lib/i18n";
-import { ClipboardList, X, Clock, Loader, CheckCircle, PauseCircle, Inbox } from "lucide-react";
+import { ClipboardList, X, Clock, Loader, CheckCircle, PauseCircle, Inbox, FileText } from "lucide-react";
 import type { Socket } from "socket.io-client";
 
 interface NpcInfo {
@@ -57,6 +57,11 @@ export default function TaskBoard({
     taskId: string;
     taskTitle: string;
     toStatus: string;
+  } | null>(null);
+  const [reportModal, setReportModal] = useState<{
+    task: Task;
+    message: string | null;
+    loading: boolean;
   } | null>(null);
 
   const npcList = useMemo(() => {
@@ -123,8 +128,28 @@ export default function TaskBoard({
   const handleAssignClick = useCallback((taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
-    setAssignModal({ taskId, taskTitle: task.title, toStatus: "pending" });
+    setAssignModal({ taskId, taskTitle: task.title, toStatus: "in_progress" });
   }, [tasks]);
+
+  const handleTaskClick = useCallback((taskId: string) => {
+    if (!socket) return;
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    setReportModal({ task, message: null, loading: true });
+    socket.emit("task:get-report", { taskId });
+  }, [socket, tasks]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = ({ taskId, message }: { taskId: string; message: string | null }) => {
+      setReportModal((prev) => {
+        if (!prev || prev.task.id !== taskId) return prev;
+        return { ...prev, message, loading: false };
+      });
+    };
+    socket.on("task:report", handler);
+    return () => { socket.off("task:report", handler); };
+  }, [socket]);
 
   if (!isOpen) return null;
 
@@ -140,7 +165,7 @@ export default function TaskBoard({
             <div className="flex gap-1">
               <button
                 onClick={() => setFilterNpc(null)}
-                className={`px-2 py-0.5 rounded text-[10px] ${
+                className={`px-2 py-0.5 rounded text-[12px] ${
                   !filterNpc ? "bg-primary text-white" : "bg-surface text-text-muted"
                 }`}
               >
@@ -150,7 +175,7 @@ export default function TaskBoard({
                 <button
                   key={id}
                   onClick={() => setFilterNpc(id)}
-                  className={`px-2 py-0.5 rounded text-[10px] ${
+                  className={`px-2 py-0.5 rounded text-[12px] ${
                     filterNpc === id ? "bg-primary text-white" : "bg-surface text-text-muted"
                   }`}
                 >
@@ -172,7 +197,7 @@ export default function TaskBoard({
                 status={col.status}
                 onDrop={handleDrop}
                 header={
-                  <div className={`text-[11px] ${col.colorClass} font-bold mb-2 flex justify-between`}>
+                  <div className={`text-[13px] ${col.colorClass} font-bold mb-2 flex justify-between`}>
                     <span className="flex items-center gap-1">
                       <col.Icon className="w-3.5 h-3.5" />{t(col.labelKey)}
                     </span>
@@ -189,7 +214,7 @@ export default function TaskBoard({
                   ) : (
                     <button
                       onClick={() => setShowCreateForm(true)}
-                      className="w-full border border-dashed border-primary/50 rounded-lg py-2 text-[11px] text-primary hover:border-primary hover:bg-primary/5 transition mb-1"
+                      className="w-full border border-dashed border-primary/50 rounded-lg py-2 text-[13px] text-primary hover:border-primary hover:bg-primary/5 transition mb-1"
                     >
                       + {t("task.createNew")}
                     </button>
@@ -206,6 +231,7 @@ export default function TaskBoard({
                       onResume={onResumeTask}
                       onComplete={onCompleteTask}
                       onAssign={handleAssignClick}
+                      onClick={handleTaskClick}
                     />
                   </DraggableTaskCard>
                 ))}
@@ -215,7 +241,7 @@ export default function TaskBoard({
         </div>
 
         {/* Drag hint */}
-        <div className="px-4 py-2 text-center text-[10px] text-text-dim border-t border-border">
+        <div className="px-4 py-2 text-center text-[12px] text-text-dim border-t border-border">
           {t("task.dragHint")}
         </div>
       </div>
@@ -228,6 +254,38 @@ export default function TaskBoard({
           onAssign={handleAssignFromModal}
           onCancel={() => setAssignModal(null)}
         />
+      )}
+
+      {/* Task Report Modal */}
+      {reportModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setReportModal(null)}>
+          <div className="bg-surface-raised rounded-xl border border-border w-[90vw] max-w-[500px] max-h-[60vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-border flex justify-between items-center">
+              <span className="text-text font-bold text-[13px] flex items-center gap-1.5">
+                <FileText className="w-4 h-4" />{t("task.reportDetail")}
+              </span>
+              <button onClick={() => setReportModal(null)} className="text-text-muted hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="px-4 py-3 border-b border-border">
+              <div className="text-text font-bold text-[13px] mb-1">{reportModal.task.title}</div>
+              {reportModal.task.summary && (
+                <div className="text-text-muted text-[12px]">{reportModal.task.summary}</div>
+              )}
+              {reportModal.task.npcName && (
+                <div className="text-npc text-[11px] mt-1">NPC: {reportModal.task.npcName}</div>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              {reportModal.loading ? (
+                <div className="text-text-muted text-[12px] text-center py-4">{t("task.reportLoading")}</div>
+              ) : reportModal.message ? (
+                <div className="text-text text-[12px] whitespace-pre-wrap leading-relaxed">{reportModal.message}</div>
+              ) : (
+                <div className="text-text-dim text-[12px] text-center py-4">{t("task.noReport")}</div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
