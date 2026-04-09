@@ -1,6 +1,6 @@
 {
   "name": "deskrpg",
-  "version": "2026.4.9-2",
+  "version": "2026.4.9-3",
   "private": false,
   "bin": {
     "deskrpg": "bin/deskrpg.js"
