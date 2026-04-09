@@ -8,6 +8,7 @@ import LocaleSwitcher from "@/components/LocaleSwitcher";
 import CityScapeBackground from "@/components/CityScapeBackground";
 
 const isComingSoon = process.env.NEXT_PUBLIC_COMING_SOON === "true";
+const isRegistrationDisabled = process.env.NEXT_PUBLIC_REGISTRATION_DISABLED === "true";
 
 export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -31,6 +32,7 @@ export default function AuthPage() {
       } else {
         setHasUsers(status.hasUsers);
         if (!status.hasUsers) setMode("register");
+        else if (isRegistrationDisabled) setMode("login");
         setChecking(false);
       }
     }).catch(() => {
@@ -141,8 +143,8 @@ export default function AuthPage() {
               </div>
             ) : (
             <>
-            {/* Tab switcher — hidden during fresh setup */}
-            {hasUsers && (
+            {/* Tab switcher — hidden during fresh setup or when registration is disabled */}
+            {hasUsers && !isRegistrationDisabled && (
               <div className="flex mb-5 rounded-lg overflow-hidden border border-border">
                 <button
                   onClick={() => setMode("login")}

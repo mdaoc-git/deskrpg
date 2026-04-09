@@ -1983,6 +1983,7 @@ const ko: Record<string, string> = {
   "errors.cannotDeleteMainAgent": "메인 에이전트는 삭제할 수 없습니다",
   "errors.agentInUseByNpc": "이 에이전트는 현재 NPC가 사용 중입니다",
   "errors.failedToRemoveAgentFromGateway": "게이트웨이에서 에이전트를 삭제하지 못했습니다",
+  "errors.registrationDisabled": "회원가입이 비활성화되어 있습니다. 관리자에게 문의해주세요.",
   "errors.templateDeleteConfirm": "\"{name}\"을(를) 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
   "task.chatPlaceholder": "태스크에 대해 추가 지시를 보내보세요.",
   "task.register": "등록",

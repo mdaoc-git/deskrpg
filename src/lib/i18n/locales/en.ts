@@ -1982,6 +1982,7 @@ const en: Record<string, string> = {
   "errors.cannotDeleteMainAgent": "The main agent cannot be deleted",
   "errors.agentInUseByNpc": "This agent is currently used by an NPC",
   "errors.failedToRemoveAgentFromGateway": "Failed to remove agent from gateway",
+  "errors.registrationDisabled": "Registration is currently disabled. Please contact the administrator.",
   "errors.templateDeleteConfirm": "Delete \"{name}\"? This cannot be undone.",
   "task.chatPlaceholder": "Send additional instructions about this task.",
   "task.register": "Register",

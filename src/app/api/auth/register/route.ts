@@ -9,6 +9,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { count, eq, or } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
+  // Registration gate: block when REGISTRATION_DISABLED=true (bootstrap exception: allow if no users exist)
+  if (process.env.REGISTRATION_DISABLED === "true") {
+    const [{ value: existingCount }] = await db.select({ value: count() }).from(users);
+    if (Number(existingCount) > 0) {
+      return NextResponse.json(
+        { errorCode: "registration_disabled", error: "Registration is currently disabled" },
+        { status: 403 },
+      );
+    }
+  }
+
   const body = await req.json();
   const { loginId, nickname, password } = body;
 

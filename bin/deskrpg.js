@@ -213,6 +213,7 @@ function printHelp() {
   );
   console.log("  start [-p PORT] [-d]  Start the DeskRPG server");
   console.log("  stop                  Stop the running DeskRPG server");
+  console.log("  create-user           Create a new user account");
   console.log("  update                Update to the latest version");
   console.log("  doctor                Check runtime health");
   console.log("  remove                Remove runtime data (~/.deskrpg)");
@@ -226,17 +227,28 @@ function printHelp() {
   console.log("  -p, --port PORT       Set server port (default: 3000)");
   console.log("  -d, --daemon          Run server in background");
   console.log("");
+  console.log("create-user options:");
+  console.log("  --login-id ID         Login ID (required)");
+  console.log("  --nickname NAME       Display name (required)");
+  console.log("  --password PW         Password (required, 8+ chars)");
+  console.log(
+    "  --role ROLE           User role: admin or user (default: user)",
+  );
+  console.log("");
   console.log("Examples:");
   console.log("  deskrpg init          # First-time setup");
   console.log("  deskrpg start         # Start on default port 3000");
   console.log("  deskrpg start -p 8080 # Start on port 8080");
   console.log("  deskrpg start -d      # Start in background");
   console.log("  deskrpg stop          # Stop background server");
+  console.log(
+    "  deskrpg create-user --login-id alice --nickname Alice --password secret123",
+  );
 }
 
 function printUsage() {
   console.error(
-    "Usage: deskrpg <init|start|stop|update|doctor|remove|uninstall|version|help>",
+    "Usage: deskrpg <init|start|stop|create-user|update|doctor|remove|uninstall|version|help>",
   );
 }
 
@@ -594,6 +606,146 @@ async function runUninstall() {
   }
 }
 
+function parseCreateUserArgs() {
+  const args = process.argv.slice(3);
+  const result = {
+    loginId: null,
+    nickname: null,
+    password: null,
+    role: "user",
+  };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--login-id" && args[i + 1]) {
+      result.loginId = args[++i];
+    } else if (args[i] === "--nickname" && args[i + 1]) {
+      result.nickname = args[++i];
+    } else if (args[i] === "--password" && args[i + 1]) {
+      result.password = args[++i];
+    } else if (args[i] === "--role" && args[i + 1]) {
+      result.role = args[++i];
+    }
+  }
+  return result;
+}
+
+async function runCreateUser() {
+  const { loginId, nickname, password, role } = parseCreateUserArgs();
+
+  if (!loginId || !nickname || !password) {
+    console.error(
+      "Usage: deskrpg create-user --login-id ID --nickname NAME --password PW [--role admin|user]",
+    );
+    process.exit(1);
+  }
+
+  if (loginId.length < 2 || loginId.length > 50) {
+    console.error("Error: login-id must be 2-50 characters");
+    process.exit(1);
+  }
+  if (nickname.length < 2 || nickname.length > 50) {
+    console.error("Error: nickname must be 2-50 characters");
+    process.exit(1);
+  }
+  if (password.length < 8) {
+    console.error("Error: password must be at least 8 characters");
+    process.exit(1);
+  }
+  if (!["admin", "user"].includes(role)) {
+    console.error("Error: role must be 'admin' or 'user'");
+    process.exit(1);
+  }
+
+  // Load env — try runtime .env first, then DATABASE_URL from environment
+  const runtimePaths = loadRuntimePathsModule();
+  const envPath = runtimePaths.getDeskRpgEnvPath();
+  if (fs.existsSync(envPath)) {
+    loadEnvFile(envPath);
+  }
+
+  const dbUrl = process.env.DATABASE_URL;
+  const dbType = process.env.DB_TYPE;
+  const sqlitePath = process.env.SQLITE_PATH;
+
+  // Hash password
+  const bcrypt = require("bcryptjs");
+  const passwordHash = await bcrypt.hash(password, 10);
+  const systemRole = role === "admin" ? "system_admin" : "user";
+
+  if (dbType === "sqlite" || (!dbUrl && sqlitePath)) {
+    // SQLite mode
+    const resolvedPath =
+      sqlitePath || path.join(runtimePaths.getDeskRpgDataDir(), "deskrpg.db");
+    if (!fs.existsSync(resolvedPath)) {
+      console.error(
+        `Error: SQLite database not found at ${resolvedPath}. Run "deskrpg init" first.`,
+      );
+      process.exit(1);
+    }
+    const Database = require("better-sqlite3");
+    const db = new Database(resolvedPath);
+    try {
+      const existing = db
+        .prepare("SELECT id FROM users WHERE login_id = ? OR nickname = ?")
+        .get(loginId, nickname);
+      if (existing) {
+        console.error("Error: login_id or nickname already taken");
+        process.exit(1);
+      }
+      const { randomUUID } = require("node:crypto");
+      const id = randomUUID();
+      db.prepare(
+        "INSERT INTO users (id, login_id, nickname, password_hash, system_role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).run(
+        id,
+        loginId,
+        nickname,
+        passwordHash,
+        systemRole,
+        new Date().toISOString(),
+        new Date().toISOString(),
+      );
+      console.log(`User created successfully:`);
+      console.log(`  ID:       ${id}`);
+      console.log(`  Login ID: ${loginId}`);
+      console.log(`  Nickname: ${nickname}`);
+      console.log(`  Role:     ${systemRole}`);
+    } finally {
+      db.close();
+    }
+  } else if (dbUrl) {
+    // PostgreSQL mode
+    const { Pool } = require("pg");
+    const pool = new Pool({ connectionString: dbUrl });
+    try {
+      const { rows: existing } = await pool.query(
+        "SELECT id FROM users WHERE login_id = $1 OR nickname = $2 LIMIT 1",
+        [loginId, nickname],
+      );
+      if (existing.length > 0) {
+        console.error("Error: login_id or nickname already taken");
+        process.exit(1);
+      }
+      const { rows } = await pool.query(
+        "INSERT INTO users (login_id, nickname, password_hash, system_role) VALUES ($1, $2, $3, $4) RETURNING id",
+        [loginId, nickname, passwordHash, systemRole],
+      );
+      const id = rows[0].id;
+      console.log(`User created successfully:`);
+      console.log(`  ID:       ${id}`);
+      console.log(`  Login ID: ${loginId}`);
+      console.log(`  Nickname: ${nickname}`);
+      console.log(`  Role:     ${systemRole}`);
+    } finally {
+      await pool.end();
+    }
+  } else {
+    console.error(
+      "Error: No database configured. Set DATABASE_URL or run 'deskrpg init' first.",
+    );
+    process.exit(1);
+  }
+}
+
 async function main() {
   const command = process.argv[2];
 
@@ -618,6 +770,7 @@ async function main() {
       "init",
       "start",
       "stop",
+      "create-user",
       "update",
       "doctor",
       "remove",
@@ -635,6 +788,11 @@ async function main() {
 
   if (command === "stop") {
     await runStop();
+    return;
+  }
+
+  if (command === "create-user") {
+    await runCreateUser();
     return;
   }
 

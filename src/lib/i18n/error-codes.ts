@@ -121,7 +121,8 @@ export type ErrorCode =
   | "agent_id_required"
   | "cannot_delete_main_agent"
   | "agent_in_use_by_npc"
-  | "failed_to_remove_agent_from_gateway";
+  | "failed_to_remove_agent_from_gateway"
+  | "registration_disabled";
 
 const ERROR_MESSAGE_KEYS: Record<ErrorCode, string> = {
   invalid_credentials: "errors.invalidCredentials",
@@ -247,6 +248,7 @@ const ERROR_MESSAGE_KEYS: Record<ErrorCode, string> = {
   cannot_delete_main_agent: "errors.cannotDeleteMainAgent",
   agent_in_use_by_npc: "errors.agentInUseByNpc",
   failed_to_remove_agent_from_gateway: "errors.failedToRemoveAgentFromGateway",
+  registration_disabled: "errors.registrationDisabled",
 };
 
 type Translator = (key: string, params?: Record<string, string | number>) => string;
