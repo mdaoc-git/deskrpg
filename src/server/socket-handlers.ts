@@ -61,7 +61,7 @@ const { parseNpcResponse, isValidTaskAction } = require("../lib/task-parser.js")
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sanitizeNpcResponseText } = require("../lib/task-block-utils.js") as typeof import("../lib/task-block-utils.js");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { TaskManager } = require("../lib/task-manager.js") as { TaskManager: new (db: typeof import("../db").db, schema: { tasks: typeof tasks; npcs: typeof npcs }) => { handleTaskAction: (...args: unknown[]) => Promise<unknown>; getTasksByNpc: (npcId: string) => Promise<unknown[]>; getTasksByChannel: (channelId: string) => Promise<unknown[]>; deleteTask: (taskId: string, channelId: string) => Promise<unknown>; getStaleInProgressTasks: (channelId: string, olderThanIso: string) => Promise<unknown[]>; markTaskNudged: (taskId: string, channelId: string) => Promise<unknown>; markTaskStalled: (taskId: string, channelId: string, reason: string) => Promise<unknown>; resumeTask: (taskId: string, channelId: string) => Promise<unknown>; completeTask: (taskId: string, channelId: string) => Promise<unknown>; createBacklogTask: (channelId: string, assignerId: string, title: string, summary: string | null) => Promise<unknown>; moveTask: (taskId: string, channelId: string, toStatus: string, npcId: string | null) => Promise<unknown>; getTaskById: (taskId: string, channelId: string) => Promise<unknown>; getTaskByNpcTaskId: (npcId: string, npcTaskId: string) => Promise<unknown>; hasInProgressTask: (npcId: string, channelId: string) => Promise<boolean>; getNextPendingTask: (npcId: string, channelId: string) => Promise<ManagedTask | null>; }; };
+const { TaskManager } = require("../lib/task-manager.js") as { TaskManager: new (db: typeof import("../db").db, schema: { tasks: typeof tasks; npcs: typeof npcs }) => { handleTaskAction: (...args: unknown[]) => Promise<unknown>; getTasksByNpc: (npcId: string) => Promise<unknown[]>; getTasksByChannel: (channelId: string) => Promise<unknown[]>; deleteTask: (taskId: string, channelId: string) => Promise<unknown>; getStaleInProgressTasks: (channelId: string, olderThanIso: string) => Promise<unknown[]>; markTaskNudged: (taskId: string, channelId: string) => Promise<unknown>; markTaskStalled: (taskId: string, channelId: string, reason: string) => Promise<unknown>; resumeTask: (taskId: string, channelId: string) => Promise<unknown>; completeTask: (taskId: string, channelId: string) => Promise<unknown>; createBacklogTask: (channelId: string, assignerId: string, title: string, summary: string | null) => Promise<unknown>; moveTask: (taskId: string, channelId: string, toStatus: string, npcId: string | null, options?: { expectedFromStatus?: string }) => Promise<unknown>; getTaskById: (taskId: string, channelId: string) => Promise<unknown>; getTaskByNpcTaskId: (npcId: string, npcTaskId: string) => Promise<unknown>; hasInProgressTask: (npcId: string, channelId: string) => Promise<boolean>; getNextPendingTask: (npcId: string, channelId: string) => Promise<ManagedTask | null>; }; };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { withTaskReminder, normalizeTaskPromptLocale, buildTaskSessionPrompt } = require("../lib/task-prompt.js") as typeof import("../lib/task-prompt.js");
 
@@ -300,7 +300,7 @@ async function processNpcTaskActions(
         // Auto-promote next pending task for the same NPC (FIFO)
         const nextTask = await taskManager.getNextPendingTask(input.npcId, input.channelId);
         if (nextTask) {
-          const promoted = await taskManager.moveTask(nextTask.id, input.channelId, "in_progress", input.npcId) as (ManagedTask & { _fromStatus?: string }) | null;
+          const promoted = await taskManager.moveTask(nextTask.id, input.channelId, "in_progress", input.npcId, { expectedFromStatus: "pending" }) as (ManagedTask & { _fromStatus?: string }) | null;
           if (promoted) {
             const { _fromStatus, ...promotedTask } = promoted;
             io.to(input.channelId).emit("task:updated", { task: promotedTask, action: "move_pending_in_progress" });
@@ -1480,25 +1480,29 @@ export function setupSocketHandlers(io: Server) {
           if (completedTask.npcId) {
             const nextTask = await taskManager.getNextPendingTask(completedTask.npcId, player.mapId);
             if (nextTask) {
-              const promoted = await taskManager.moveTask(nextTask.id, player.mapId, "in_progress", completedTask.npcId) as (ManagedTask & { _fromStatus?: string }) | null;
+              const promoted = await taskManager.moveTask(nextTask.id, player.mapId, "in_progress", completedTask.npcId, { expectedFromStatus: "pending" }) as (ManagedTask & { _fromStatus?: string }) | null;
               if (promoted) {
                 const { _fromStatus, ...promotedTask } = promoted;
                 io.to(player.mapId).emit("task:updated", { task: promotedTask, action: "move_pending_in_progress" });
 
                 // Trigger NPC to start working on the promoted task
+                // Stream to the promoted task's assigner, not the user who clicked complete
                 const npcConfig = await getNpcConfig(completedTask.npcId);
                 if (npcConfig) {
+                  const assignerSockets = getJoinedSocketsForUserAndChannel(io, player.userId, player.mapId);
+                  const targetSocket = assignerSockets[0] || socket;
+
                   const taskSessionPrompt = buildTaskSessionPrompt({
                     ...promotedTask,
                     summary: promotedTask.summary || "",
                     createdAt: (promotedTask as { createdAt?: string }).createdAt || "",
-                  }, getSocketLocale(socket));
-                  const autoStartMessage = withTaskReminder(`${promotedTask.title} 업무를 시작합니다.`, getSocketLocale(socket));
+                  }, getSocketLocale(targetSocket));
+                  const autoStartMessage = withTaskReminder(`${promotedTask.title} 업무를 시작합니다.`, getSocketLocale(targetSocket));
                   const messageToSend = `${taskSessionPrompt}\n\n${autoStartMessage}`;
                   const sessionKey = `${npcConfig.sessionKeyPrefix || completedTask.npcId}-task-${promotedTask.npcTaskId}`;
 
                   const response = await streamNpcResponse(
-                    socket,
+                    targetSocket,
                     completedTask.npcId,
                     npcConfig,
                     player.userId,
@@ -1517,7 +1521,7 @@ export function setupSocketHandlers(io: Server) {
                       assignerCharacterId: player.characterId,
                       targetUserId: player.userId,
                     });
-                    socket.emit("npc:response-complete", {
+                    targetSocket.emit("npc:response-complete", {
                       npcId: completedTask.npcId,
                       npcName: npcConfig._name || completedTask.npcId,
                     });

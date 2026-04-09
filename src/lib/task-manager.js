@@ -318,13 +318,16 @@ class TaskManager {
    * Returns task object with _fromStatus for the caller to trigger actions.
    * @throws {Error} if npcId is required but not provided
    */
-  async moveTask(taskId, channelId, toStatus, npcId) {
+  async moveTask(taskId, channelId, toStatus, npcId, { expectedFromStatus } = {}) {
     const { db, schema } = this;
 
     const current = await this.getTaskById(taskId, channelId);
     if (!current) return null;
 
     const fromStatus = current.status;
+
+    // Guard: if caller expects a specific source status, reject if it changed (race protection)
+    if (expectedFromStatus && current.status !== expectedFromStatus) return null;
 
     let finalNpcId;
     if (toStatus === "backlog") {
@@ -356,18 +359,22 @@ class TaskManager {
       updates.stalledReason = null;
     }
 
-    const [row] = await db
+    // Atomic update: include current status in WHERE to prevent race conditions
+    const rows = await db
       .update(schema.tasks)
       .set(updates)
       .where(
         and(
           eq(schema.tasks.id, taskId),
           eq(schema.tasks.channelId, channelId),
+          eq(schema.tasks.status, fromStatus),
         ),
       )
       .returning();
 
-    const task = normalizeTask(row);
+    if (!rows.length) return null; // Another concurrent move already changed the status
+
+    const task = normalizeTask(rows[0]);
     return { ...task, _fromStatus: fromStatus };
   }
 
