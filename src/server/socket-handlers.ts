@@ -770,7 +770,7 @@ async function persistMeetingMinutes(input: {
 // JWT helpers
 // ---------------------------------------------------------------------------
 
-const DEV_JWT_SECRET = "deskrpg-dev-jwt-secret-do-not-use-in-production";
+import { DEV_JWT_SECRET } from "@/lib/dev-constants";
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET || (process.env.NODE_ENV !== "production" ? DEV_JWT_SECRET : "");
