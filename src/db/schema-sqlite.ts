@@ -79,6 +79,33 @@ export const gatewayShares = sqliteTable("gateway_shares", {
   uniqueIndex("gateway_shares_gateway_user_idx").on(table.gatewayId, table.userId),
 ]);
 
+export const providerResources = sqliteTable("provider_resources", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  providerType: text("provider_type").notNull(),
+  displayName: text("display_name"),
+  authMethod: text("auth_method").notNull(),
+  credentialsEncrypted: text("credentials_encrypted"),
+  baseUrl: text("base_url"),
+  lastValidatedAt: text("last_validated_at"),
+  lastValidationStatus: text("last_validation_status"),
+  createdAt: text("created_at").$defaultFn(() => new Date().toISOString()).notNull(),
+  updatedAt: text("updated_at").$defaultFn(() => new Date().toISOString()).notNull(),
+}, (table) => [
+  index("idx_provider_resources_owner").on(table.ownerUserId),
+]);
+
+export const providerShares = sqliteTable("provider_shares", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  providerId: text("provider_id").notNull().references(() => providerResources.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("use"),
+  createdAt: text("created_at").$defaultFn(() => new Date().toISOString()).notNull(),
+}, (table) => [
+  index("idx_provider_shares_provider").on(table.providerId),
+  uniqueIndex("provider_shares_provider_user_idx").on(table.providerId, table.userId),
+]);
+
 export const channelGatewayBindings = sqliteTable("channel_gateway_bindings", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   channelId: text("channel_id").notNull().references(() => channels.id, { onDelete: "cascade" }),
@@ -230,6 +257,22 @@ export const npcs = sqliteTable("npcs", {
 }, (table) => [
   index("idx_npcs_channel_id").on(table.channelId),
   unique("npcs_channel_position_unique").on(table.channelId, table.positionX, table.positionY),
+]);
+
+export const npcSessions = sqliteTable("npc_sessions", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  npcId: text("npc_id").notNull().references(() => npcs.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id),
+  adapterType: text("adapter_type").notNull(),
+  sessionType: text("session_type").notNull(),
+  sessionRef: text("session_ref").notNull(),
+  contextKey: text("context_key").notNull(),
+  lastSummary: text("last_summary"),
+  createdAt: text("created_at").$defaultFn(() => new Date().toISOString()).notNull(),
+  updatedAt: text("updated_at").$defaultFn(() => new Date().toISOString()).notNull(),
+}, (table) => [
+  index("idx_npc_sessions_npc").on(table.npcId),
+  uniqueIndex("npc_sessions_npc_user_context_idx").on(table.npcId, table.userId, table.contextKey),
 ]);
 
 export const npcReports = sqliteTable("npc_reports", {

@@ -251,6 +251,30 @@ function ensureSqliteCompatibility(sqlite) {
     CREATE INDEX IF NOT EXISTS idx_gateway_shares_gateway_id ON gateway_shares(gateway_id);
     CREATE INDEX IF NOT EXISTS idx_gateway_shares_user_id ON gateway_shares(user_id);
     CREATE UNIQUE INDEX IF NOT EXISTS gateway_shares_gateway_user_idx ON gateway_shares(gateway_id, user_id);
+    CREATE TABLE IF NOT EXISTS provider_resources (
+      id TEXT PRIMARY KEY NOT NULL,
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider_type TEXT NOT NULL,
+      display_name TEXT,
+      auth_method TEXT NOT NULL,
+      credentials_encrypted TEXT,
+      base_url TEXT,
+      last_validated_at TEXT,
+      last_validation_status TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_provider_resources_owner ON provider_resources(owner_user_id);
+    CREATE TABLE IF NOT EXISTS provider_shares (
+      id TEXT PRIMARY KEY NOT NULL,
+      provider_id TEXT NOT NULL REFERENCES provider_resources(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'use',
+      created_at TEXT NOT NULL,
+      UNIQUE(provider_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_provider_shares_provider ON provider_shares(provider_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS provider_shares_provider_user_idx ON provider_shares(provider_id, user_id);
     CREATE TABLE IF NOT EXISTS channel_gateway_bindings (
       id TEXT PRIMARY KEY NOT NULL,
       channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
@@ -277,6 +301,20 @@ function ensureSqliteCompatibility(sqlite) {
     CREATE INDEX IF NOT EXISTS idx_npc_reports_channel ON npc_reports(channel_id);
     CREATE INDEX IF NOT EXISTS idx_npc_reports_target_user ON npc_reports(target_user_id);
     CREATE INDEX IF NOT EXISTS idx_npc_reports_status ON npc_reports(status);
+    CREATE TABLE IF NOT EXISTS npc_sessions (
+      id TEXT PRIMARY KEY NOT NULL,
+      npc_id TEXT NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      adapter_type TEXT NOT NULL,
+      session_type TEXT NOT NULL,
+      session_ref TEXT NOT NULL,
+      context_key TEXT NOT NULL,
+      last_summary TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_npc_sessions_npc ON npc_sessions(npc_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS npc_sessions_npc_user_context_idx ON npc_sessions(npc_id, user_id, context_key);
   `);
 
   try { sqlite.exec("ALTER TABLE npcs ADD COLUMN adapter_type TEXT NOT NULL DEFAULT 'openclaw'"); } catch {}
@@ -411,6 +449,33 @@ if (isPostgres) {
     uniqueIndex("gateway_shares_gateway_user_idx").on(table.gatewayId, table.userId),
   ]);
 
+  const providerResources = pgTable("provider_resources", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    providerType: varchar("provider_type", { length: 20 }).notNull(),
+    displayName: varchar("display_name", { length: 120 }),
+    authMethod: varchar("auth_method", { length: 20 }).notNull(),
+    credentialsEncrypted: text("credentials_encrypted"),
+    baseUrl: text("base_url"),
+    lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
+    lastValidationStatus: varchar("last_validation_status", { length: 40 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  }, (table) => [
+    index("idx_provider_resources_owner").on(table.ownerUserId),
+  ]);
+
+  const providerShares = pgTable("provider_shares", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    providerId: uuid("provider_id").notNull().references(() => providerResources.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 10 }).notNull().default("use"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  }, (table) => [
+    index("idx_provider_shares_provider").on(table.providerId),
+    uniqueIndex("provider_shares_provider_user_idx").on(table.providerId, table.userId),
+  ]);
+
   const channelGatewayBindings = pgTable("channel_gateway_bindings", {
     id: uuid("id").defaultRandom().primaryKey(),
     channelId: uuid("channel_id").notNull().references(() => channels.id, { onDelete: "cascade" }),
@@ -524,6 +589,22 @@ if (isPostgres) {
     unique("npcs_channel_position_unique").on(table.channelId, table.positionX, table.positionY),
   ]);
 
+  const npcSessions = pgTable("npc_sessions", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    npcId: uuid("npc_id").notNull().references(() => npcs.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    adapterType: varchar("adapter_type", { length: 20 }).notNull(),
+    sessionType: varchar("session_type", { length: 20 }).notNull(),
+    sessionRef: varchar("session_ref", { length: 200 }).notNull(),
+    contextKey: varchar("context_key", { length: 200 }).notNull(),
+    lastSummary: text("last_summary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  }, (table) => [
+    index("idx_npc_sessions_npc").on(table.npcId),
+    uniqueIndex("npc_sessions_npc_user_context_idx").on(table.npcId, table.userId, table.contextKey),
+  ]);
+
   const meetingMinutes = pgTable("meeting_minutes", {
     id: uuid("id").primaryKey().defaultRandom(),
     channelId: uuid("channel_id").notNull().references(() => channels.id, { onDelete: "cascade" }),
@@ -584,6 +665,8 @@ if (isPostgres) {
     channels,
     gatewayResources,
     gatewayShares,
+    providerResources,
+    providerShares,
     channelGatewayBindings,
     groupMembers,
     groupInvites,
@@ -592,6 +675,7 @@ if (isPostgres) {
     userPermissionOverrides,
     channelMembers,
     npcs,
+    npcSessions,
     meetingMinutes,
     tasks,
     npcReports,
@@ -700,6 +784,33 @@ if (isPostgres) {
     index("idx_gateway_shares_gateway_id").on(table.gatewayId),
     index("idx_gateway_shares_user_id").on(table.userId),
     uniqueIndex("gateway_shares_gateway_user_idx").on(table.gatewayId, table.userId),
+  ]);
+
+  const providerResources = sqliteTable("provider_resources", {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    providerType: text("provider_type").notNull(),
+    displayName: text("display_name"),
+    authMethod: text("auth_method").notNull(),
+    credentialsEncrypted: text("credentials_encrypted"),
+    baseUrl: text("base_url"),
+    lastValidatedAt: text("last_validated_at"),
+    lastValidationStatus: text("last_validation_status"),
+    createdAt: text("created_at").$defaultFn(() => new Date().toISOString()).notNull(),
+    updatedAt: text("updated_at").$defaultFn(() => new Date().toISOString()).notNull(),
+  }, (table) => [
+    index("idx_provider_resources_owner").on(table.ownerUserId),
+  ]);
+
+  const providerShares = sqliteTable("provider_shares", {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    providerId: text("provider_id").notNull().references(() => providerResources.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("use"),
+    createdAt: text("created_at").$defaultFn(() => new Date().toISOString()).notNull(),
+  }, (table) => [
+    index("idx_provider_shares_provider").on(table.providerId),
+    uniqueIndex("provider_shares_provider_user_idx").on(table.providerId, table.userId),
   ]);
 
   const channelGatewayBindings = sqliteTable("channel_gateway_bindings", {
@@ -815,6 +926,22 @@ if (isPostgres) {
     unique("npcs_channel_position_unique").on(table.channelId, table.positionX, table.positionY),
   ]);
 
+  const npcSessions = sqliteTable("npc_sessions", {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    npcId: text("npc_id").notNull().references(() => npcs.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id),
+    adapterType: text("adapter_type").notNull(),
+    sessionType: text("session_type").notNull(),
+    sessionRef: text("session_ref").notNull(),
+    contextKey: text("context_key").notNull(),
+    lastSummary: text("last_summary"),
+    createdAt: text("created_at").$defaultFn(() => new Date().toISOString()).notNull(),
+    updatedAt: text("updated_at").$defaultFn(() => new Date().toISOString()).notNull(),
+  }, (table) => [
+    index("idx_npc_sessions_npc").on(table.npcId),
+    uniqueIndex("npc_sessions_npc_user_context_idx").on(table.npcId, table.userId, table.contextKey),
+  ]);
+
   const meetingMinutes = sqliteTable("meeting_minutes", {
     id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     channelId: text("channel_id").notNull().references(() => channels.id, { onDelete: "cascade" }),
@@ -875,6 +1002,8 @@ if (isPostgres) {
     channels,
     gatewayResources,
     gatewayShares,
+    providerResources,
+    providerShares,
     channelGatewayBindings,
     groupMembers,
     groupInvites,
@@ -883,6 +1012,7 @@ if (isPostgres) {
     userPermissionOverrides,
     channelMembers,
     npcs,
+    npcSessions,
     meetingMinutes,
     tasks,
     npcReports,

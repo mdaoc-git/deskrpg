@@ -59,6 +59,7 @@ import { ClaudeAdapter } from "../lib/adapters/claude-adapter.js";
 import { CodexAdapter } from "../lib/adapters/codex-adapter.js";
 import { GeminiAdapter } from "../lib/adapters/gemini-adapter.js";
 import { OpencodeAdapter as OpenCodeAdapter } from "../lib/adapters/opencode-adapter.js";
+import { dmHub } from "../lib/adapters/dm-hub.js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
 const { OpenClawGateway } = require("../lib/openclaw-gateway.js") as { OpenClawGateway: new () => any };
@@ -384,7 +385,7 @@ async function runProgressNudgeForTask(
     const targetUserId = await getAssignerUserId(task.assignerId);
     if (!targetUserId) return;
 
-    const sessionKey = `${npcConfig.sessionKeyPrefix || task.npcId}-dm-${targetUserId}`;
+    const sessionKey = `${npcConfig.sessionKeyPrefix || task.npcId}-task-${task.npcTaskId || task.id}`;
     const prompt = withTaskReminder(promptOverride ?? buildAutoExecutionPrompt(task));
     let response = "";
 
@@ -417,6 +418,10 @@ async function runProgressNudgeForTask(
     }
 
     const parsed = parseNpcResponse(response);
+    const summary = (parsed.message || "").trim().slice(0, 500);
+    if (summary) {
+      await dmHub.updateSessionSummary(task.npcId, targetUserId, `task-${task.npcTaskId || task.id}`, summary);
+    }
 
     await processNpcTaskActions(io, parsed, {
       channelId: task.channelId,
@@ -1162,15 +1167,23 @@ export function setupSocketHandlers(io: Server) {
 
         // Inject task reminder on every NPC DM so task actions can be parsed consistently.
         const fileSection = buildFilePromptSection(extractedFiles);
-        const messageToSend = withTaskReminder(trimmed + fileSection, getSocketLocale(socket));
+        const taskDashboard = await dmHub.buildTaskDashboard(npcId, npcConfig._channelId);
+        const enrichedMessage = taskDashboard
+          ? `${taskDashboard}\n\n${trimmed + fileSection}`
+          : trimmed + fileSection;
+        const messageToSend = withTaskReminder(enrichedMessage, getSocketLocale(socket));
 
         // Stream response via OpenClaw
         chatLog(`  → gateway (${npcConfig._name}): msgLen=${messageToSend.length}(${(messageToSend.length/1024).toFixed(0)}KB)`, fileAttachments ? `+${fileAttachments.length} att(${fileAttachments.map(a => `${a.fileName}:${(a.content.length/1024).toFixed(0)}KB`).join(",")})` : "");
         const response = await streamNpcResponse(socket, npcId, npcConfig, user.userId, messageToSend, fileAttachments);
         chatLog(`  ← npc response (${npcConfig._name}):`, response ? response.slice(0, 150) + (response.length > 150 ? "..." : "") : "(empty)");
         if (response) {
-          const parsed = parseNpcResponse(response);
-          const sanitizedResponse = sanitizeNpcResponseText(response);
+          const { finalResponse, markers } = dmHub.processResponseMarkers(response);
+          if (markers.length > 0) {
+            console.log("[dm-hub] Response markers:", markers);
+          }
+          const parsed = parseNpcResponse(finalResponse);
+          const sanitizedResponse = sanitizeNpcResponseText(finalResponse);
           history.push({ role: "npc", content: sanitizedResponse, timestamp: Date.now() });
           if (player?.characterId) {
             await processNpcTaskActions(io, parsed, {

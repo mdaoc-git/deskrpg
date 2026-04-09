@@ -36,6 +36,8 @@ export const groups = activeSchema.groups;
 export const channels = activeSchema.channels;
 export const gatewayResources = activeSchema.gatewayResources;
 export const gatewayShares = activeSchema.gatewayShares;
+export const providerResources = activeSchema.providerResources;
+export const providerShares = activeSchema.providerShares;
 export const channelGatewayBindings = activeSchema.channelGatewayBindings;
 export const groupMembers = activeSchema.groupMembers;
 export const groupInvites = activeSchema.groupInvites;
@@ -46,6 +48,7 @@ export const channelMembers = activeSchema.channelMembers;
 export const maps = activeSchema.maps;
 export const mapPortals = activeSchema.mapPortals;
 export const npcs = activeSchema.npcs;
+export const npcSessions = activeSchema.npcSessions;
 export const npcReports = activeSchema.npcReports;
 export const chatMessages = activeSchema.chatMessages;
 export const meetingMinutes = activeSchema.meetingMinutes;
@@ -300,6 +303,30 @@ export function ensureSqliteCompatibility(sqlite: BetterSqlite3.Database) {
     CREATE INDEX IF NOT EXISTS idx_gateway_shares_gateway_id ON gateway_shares(gateway_id);
     CREATE INDEX IF NOT EXISTS idx_gateway_shares_user_id ON gateway_shares(user_id);
     CREATE UNIQUE INDEX IF NOT EXISTS gateway_shares_gateway_user_idx ON gateway_shares(gateway_id, user_id);
+    CREATE TABLE IF NOT EXISTS provider_resources (
+      id TEXT PRIMARY KEY NOT NULL,
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider_type TEXT NOT NULL,
+      display_name TEXT,
+      auth_method TEXT NOT NULL,
+      credentials_encrypted TEXT,
+      base_url TEXT,
+      last_validated_at TEXT,
+      last_validation_status TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_provider_resources_owner ON provider_resources(owner_user_id);
+    CREATE TABLE IF NOT EXISTS provider_shares (
+      id TEXT PRIMARY KEY NOT NULL,
+      provider_id TEXT NOT NULL REFERENCES provider_resources(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'use',
+      created_at TEXT NOT NULL,
+      UNIQUE(provider_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_provider_shares_provider ON provider_shares(provider_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS provider_shares_provider_user_idx ON provider_shares(provider_id, user_id);
     CREATE TABLE IF NOT EXISTS channel_gateway_bindings (
       id TEXT PRIMARY KEY NOT NULL,
       channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
@@ -326,6 +353,20 @@ export function ensureSqliteCompatibility(sqlite: BetterSqlite3.Database) {
     CREATE INDEX IF NOT EXISTS idx_npc_reports_channel ON npc_reports(channel_id);
     CREATE INDEX IF NOT EXISTS idx_npc_reports_target_user ON npc_reports(target_user_id);
     CREATE INDEX IF NOT EXISTS idx_npc_reports_status ON npc_reports(status);
+    CREATE TABLE IF NOT EXISTS npc_sessions (
+      id TEXT PRIMARY KEY NOT NULL,
+      npc_id TEXT NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      adapter_type TEXT NOT NULL,
+      session_type TEXT NOT NULL,
+      session_ref TEXT NOT NULL,
+      context_key TEXT NOT NULL,
+      last_summary TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_npc_sessions_npc ON npc_sessions(npc_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS npc_sessions_npc_user_context_idx ON npc_sessions(npc_id, user_id, context_key);
   `);
 
   applySqliteAlterStatements(sqlite, "users", [

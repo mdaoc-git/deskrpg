@@ -78,6 +78,32 @@ function ensureSqliteBaseSchema(sqlite) {
     CREATE INDEX IF NOT EXISTS idx_gateway_shares_user_id ON gateway_shares(user_id);
     CREATE UNIQUE INDEX IF NOT EXISTS gateway_shares_gateway_user_idx ON gateway_shares(gateway_id, user_id);
 
+    CREATE TABLE IF NOT EXISTS provider_resources (
+      id TEXT PRIMARY KEY NOT NULL,
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider_type TEXT NOT NULL,
+      display_name TEXT,
+      auth_method TEXT NOT NULL,
+      credentials_encrypted TEXT,
+      base_url TEXT,
+      last_validated_at TEXT,
+      last_validation_status TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_provider_resources_owner ON provider_resources(owner_user_id);
+
+    CREATE TABLE IF NOT EXISTS provider_shares (
+      id TEXT PRIMARY KEY NOT NULL,
+      provider_id TEXT NOT NULL REFERENCES provider_resources(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'use',
+      created_at TEXT NOT NULL,
+      UNIQUE(provider_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_provider_shares_provider ON provider_shares(provider_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS provider_shares_provider_user_idx ON provider_shares(provider_id, user_id);
+
     CREATE TABLE IF NOT EXISTS channel_gateway_bindings (
       id TEXT PRIMARY KEY NOT NULL,
       channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
@@ -224,6 +250,21 @@ function ensureSqliteBaseSchema(sqlite) {
       UNIQUE(channel_id, position_x, position_y)
     );
     CREATE INDEX IF NOT EXISTS idx_npcs_channel_id ON npcs(channel_id);
+
+    CREATE TABLE IF NOT EXISTS npc_sessions (
+      id TEXT PRIMARY KEY NOT NULL,
+      npc_id TEXT NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      adapter_type TEXT NOT NULL,
+      session_type TEXT NOT NULL,
+      session_ref TEXT NOT NULL,
+      context_key TEXT NOT NULL,
+      last_summary TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_npc_sessions_npc ON npc_sessions(npc_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS npc_sessions_npc_user_context_idx ON npc_sessions(npc_id, user_id, context_key);
 
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY NOT NULL,
