@@ -11,7 +11,7 @@ const {
 } = require("./src/lib/openclaw-gateway.js");
 const { parseNpcResponse, isValidTaskAction } = require("./src/lib/task-parser.js");
 const { TaskManager } = require("./src/lib/task-manager.js");
-const { withTaskReminder, normalizeTaskPromptLocale } = require("./src/lib/task-prompt.js");
+const { withTaskReminder, normalizeTaskPromptLocale, buildTaskSessionPrompt } = require("./src/lib/task-prompt.js");
 const {
   getInternalSocketHostname,
   isInternalRequestAuthorized,
@@ -495,31 +495,32 @@ async function main() {
     }
   }
 
-  async function streamNpcResponse(socket, npcId, npcConfig, userId, message) {
+  async function streamNpcResponse(socket, npcId, npcConfig, userId, message, sessionKeyOverride, responseEvent) {
     const agentId = npcConfig.agentId || npcConfig.agent_id || null;
+    const eventName = responseEvent || "npc:response";
     if (!agentId) {
-      socket.emit("npc:response", { npcId, chunk: "[This NPC has no AI agent connected]", done: true });
+      socket.emit(eventName, { npcId, chunk: "[This NPC has no AI agent connected]", done: true });
       return "";
     }
 
     const channelId = npcConfig._channelId;
     const gateway = channelId ? await getOrConnectGateway(channelId) : null;
     if (!gateway) {
-      socket.emit("npc:response", { npcId, chunk: "[Gateway not connected]", done: true });
+      socket.emit(eventName, { npcId, chunk: "[Gateway not connected]", done: true });
       return "";
     }
 
-    const sessionKey = `${npcConfig.sessionKeyPrefix || npcId}-dm-${userId}`;
+    const sessionKey = sessionKeyOverride || `${npcConfig.sessionKeyPrefix || npcId}-dm-${userId}`;
 
     try {
       const response = await gateway.chatSend(agentId, sessionKey, message, (delta) => {
-        socket.emit("npc:response", { npcId, chunk: delta, done: false });
+        socket.emit(eventName, { npcId, chunk: delta, done: false });
       });
-      socket.emit("npc:response", { npcId, chunk: "", done: true });
+      socket.emit(eventName, { npcId, chunk: "", done: true });
       return response;
     } catch (err) {
       console.error("[npc] Chat error:", err.message);
-      socket.emit("npc:response", { npcId, chunk: "[AI Gateway error]", done: true });
+      socket.emit(eventName, { npcId, chunk: "[AI Gateway error]", done: true });
       return "";
     }
   }
@@ -713,6 +714,98 @@ ${transcript}
       } catch (err) {
         console.error("[TaskManager] Error fetching tasks:", err);
         socket.emit("task:list-response", { tasks: [], npcId: npcId || null });
+      }
+    });
+
+    socket.on("task:create", async ({ channelId, title, summary, npcId }) => {
+      try {
+        const player = players.get(socket.id);
+        if (!player) return;
+
+        if (!channelId || typeof channelId !== "string") return;
+        if (typeof title !== "string") return;
+
+        const trimmedTitle = title.trim().slice(0, 200);
+        if (!trimmedTitle) return;
+        const trimmedSummary = typeof summary === "string" ? summary.trim() : null;
+
+        let task = await taskManager.createBacklogTask(channelId, player.characterId, trimmedTitle, trimmedSummary);
+        if (npcId) {
+          task = await taskManager.moveTask(task.id, player.mapId, "pending", npcId);
+        }
+
+        if (task) {
+          io.to(player.mapId).emit("task:updated", { task, action: "create" });
+        }
+      } catch (err) {
+        console.error("[TaskManager] Error creating task:", err);
+      }
+    });
+
+    socket.on("task:move", async ({ taskId, toStatus, npcId }) => {
+      try {
+        const player = players.get(socket.id);
+        if (!player || !taskId || !toStatus) return;
+
+        const allowedStatuses = ["backlog", "pending", "in_progress", "stalled", "complete", "cancelled"];
+        if (!allowedStatuses.includes(toStatus)) return;
+
+        const movedTask = await taskManager.moveTask(taskId, player.mapId, toStatus, npcId || null);
+        if (!movedTask) return;
+
+        const fromStatus = movedTask._fromStatus;
+        const { _fromStatus, ...task } = movedTask;
+        io.to(player.mapId).emit("task:updated", { task, action: `move_${fromStatus}_${toStatus}` });
+
+        // Auto-execute task when moved to in_progress with an assigned NPC
+        if (
+          toStatus === "in_progress" &&
+          (fromStatus === "backlog" || fromStatus === "pending") &&
+          task.npcId
+        ) {
+          const npcConfig = await getNpcConfig(task.npcId);
+          if (npcConfig) {
+            const locale = getSocketLocale(socket);
+            const taskSessionPrompt = buildTaskSessionPrompt({
+              ...task,
+              summary: task.summary || "",
+              createdAt: task.createdAt || "",
+            }, locale);
+            const autoStartMessage = withTaskReminder(`${task.title} 업무를 시작합니다.`, locale);
+            const messageToSend = `${taskSessionPrompt}\n\n${autoStartMessage}`;
+            const sessionKey = `${npcConfig.sessionKeyPrefix || task.npcId}-task-${task.npcTaskId}`;
+
+            const response = await streamNpcResponse(
+              socket,
+              task.npcId,
+              npcConfig,
+              player.userId,
+              messageToSend,
+              sessionKey,
+              "npc:task-response",
+            );
+
+            if (response) {
+              const parsed = parseNpcResponse(response);
+              await processNpcTaskActions(parsed, {
+                channelId: player.mapId,
+                npcId: task.npcId,
+                npcName: npcConfig._name,
+                assignerCharacterId: player.characterId,
+                targetUserId: player.userId,
+              });
+              socket.emit("npc:response-complete", {
+                npcId: task.npcId,
+                npcName: npcConfig._name || task.npcId,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[TaskManager] Error moving task:", err);
+        if (err instanceof Error && err.message.includes("npcId required")) {
+          socket.emit("task:move-error", { error: "npcId_required" });
+        }
       }
     });
 
