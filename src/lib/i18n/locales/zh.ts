@@ -2001,6 +2001,9 @@ const zh: Record<string, string> = {
   "task.chatPlaceholder": "发送关于此任务的额外指示。",
   "task.register": "登记",
   "task.registered": "已登记",
+  "task.reportDetail": "任务详情",
+  "task.noReport": "暂无报告内容。",
+  "task.reportLoading": "正在加载报告...",
 };
 
 export default zh;

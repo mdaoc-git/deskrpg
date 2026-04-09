@@ -2001,6 +2001,9 @@ const ja: Record<string, string> = {
   "task.chatPlaceholder": "タスクについて追加の指示を送信してください。",
   "task.register": "登録",
   "task.registered": "登録済み",
+  "task.reportDetail": "タスク詳細",
+  "task.noReport": "まだ報告がありません。",
+  "task.reportLoading": "レポートを取得中...",
 };
 
 export default ja;

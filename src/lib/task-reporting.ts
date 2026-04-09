@@ -323,6 +323,23 @@ export async function getPendingReportsForUserAndChannel(
   return (rows as ReportRow[]).map((row: ReportRow) => normalizeReportRow(row)).filter((row): row is QueuedReportRow => row !== null);
 }
 
+export async function getReportsByTaskId(
+  db: unknown,
+  schema: unknown,
+  taskId: string,
+): Promise<QueuedReportRow[]> {
+  const reportDb = asReportDb(db);
+  const reportSchema = asReportSchema(schema);
+  const reports = reportSchema.npcReports;
+  const rows = await reportDb
+    .select()
+    .from(reports)
+    .where(eq((reports as unknown as { taskId: SQLWrapper }).taskId, taskId))
+    .orderBy(asc(reports.createdAt));
+
+  return (rows as ReportRow[]).map((row: ReportRow) => normalizeReportRow(row)).filter((row): row is QueuedReportRow => row !== null);
+}
+
 export function toReportReadyPayload(
   report: Pick<QueuedReportRow, "id" | "npcId" | "message" | "kind">,
   npcName?: string,
