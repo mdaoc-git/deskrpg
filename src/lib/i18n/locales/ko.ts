@@ -2003,6 +2003,9 @@ const ko: Record<string, string> = {
   "task.chatPlaceholder": "태스크에 대해 추가 지시를 보내보세요.",
   "task.register": "등록",
   "task.registered": "등록됨",
+  "task.reportDetail": "태스크 상세",
+  "task.noReport": "아직 보고된 내용이 없습니다.",
+  "task.reportLoading": "보고서 조회 중...",
 };
 
 export default ko;

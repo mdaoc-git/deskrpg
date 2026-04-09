@@ -50,19 +50,19 @@ export default function TaskCreateForm({ onSubmit, onCancel }: TaskCreateFormPro
         onKeyDown={handleKeyDown}
         placeholder={t("task.summaryPlaceholder")}
         rows={2}
-        className="w-full bg-surface text-text text-[10px] rounded px-2 py-1.5 border border-border focus:outline-none focus:border-primary resize-none mb-1.5"
+        className="w-full bg-surface text-text text-[12px] rounded px-2 py-1.5 border border-border focus:outline-none focus:border-primary resize-none mb-1.5"
       />
       <div className="flex gap-1.5 justify-end">
         <button
           onClick={onCancel}
-          className="px-2 py-1 text-[10px] text-text-muted hover:text-text rounded"
+          className="px-2 py-1 text-[12px] text-text-muted hover:text-text rounded"
         >
           <X className="w-3 h-3 inline" />
         </button>
         <button
           onClick={handleSubmit}
           disabled={!title.trim()}
-          className="px-2.5 py-1 text-[10px] bg-primary text-white rounded hover:bg-primary/80 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+          className="px-2.5 py-1 text-[12px] bg-primary text-white rounded hover:bg-primary/80 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
         >
           <Plus className="w-3 h-3" />
           {t("task.createNew")}

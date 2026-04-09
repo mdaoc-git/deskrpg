@@ -371,6 +371,45 @@ class TaskManager {
     return { ...task, _fromStatus: fromStatus };
   }
 
+  /**
+   * Check if the NPC currently has any in_progress task in the given channel.
+   */
+  async hasInProgressTask(npcId, channelId) {
+    const { db, schema } = this;
+    const rows = await db
+      .select({ id: schema.tasks.id })
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.npcId, npcId),
+          eq(schema.tasks.channelId, channelId),
+          eq(schema.tasks.status, "in_progress"),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  /**
+   * Get the oldest pending task for the given NPC in the channel (FIFO).
+   */
+  async getNextPendingTask(npcId, channelId) {
+    const { db, schema } = this;
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.npcId, npcId),
+          eq(schema.tasks.channelId, channelId),
+          eq(schema.tasks.status, "pending"),
+        ),
+      )
+      .orderBy(schema.tasks.createdAt)
+      .limit(1);
+    return rows[0] ? normalizeTask(rows[0]) : null;
+  }
+
   async getTaskByNpcTaskId(npcId, npcTaskId) {
     const { db, schema } = this;
 
