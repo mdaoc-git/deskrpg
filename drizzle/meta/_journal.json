@@ -15,6 +15,13 @@
       "when": 1775705194647,
       "tag": "0001_furry_khan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775743948087,
+      "tag": "0002_boring_inertia",
+      "breakpoints": true
     }
   ]
 }
