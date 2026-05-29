@@ -80,10 +80,10 @@ async function main() {
     registerMeetingDiscussionHandlers,
   } = meetingDiscussion;
 
-  const { db, schema } = require("./src/db/server-db.js");
+  const { db, schema, isPostgres } = require("./src/db/server-db.js");
   const { eq, and } = require("drizzle-orm");
   const { parseJson } = require("./src/db/normalize.js");
-  const taskManager = new TaskManager(db, schema);
+  const taskManager = new TaskManager(db, schema, { isPostgres });
   const { MeetingBroker } = require("./src/lib/meeting-broker.js");
   const reportSchema = { npcReports: schema.npcReports };
 
