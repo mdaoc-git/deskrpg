@@ -12,6 +12,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG NEXT_PUBLIC_COMING_SOON=false
 ARG NEXT_PUBLIC_REGISTRATION_DISABLED=false
+# CLI adapter tools (optional)
+ARG ENABLE_CLAUDE=false
+ARG ENABLE_CODEX=false
+ARG ENABLE_GEMINI=false
+ARG ENABLE_OPENCODE=false
 ENV NEXT_PUBLIC_COMING_SOON=$NEXT_PUBLIC_COMING_SOON
 ENV NEXT_PUBLIC_REGISTRATION_DISABLED=$NEXT_PUBLIC_REGISTRATION_DISABLED
 RUN npm run build
@@ -19,6 +24,11 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# CLI adapter tools (optional; re-declared for runner stage)
+ARG ENABLE_CLAUDE=false
+ARG ENABLE_CODEX=false
+ARG ENABLE_GEMINI=false
+ARG ENABLE_OPENCODE=false
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
@@ -37,6 +47,8 @@ COPY --from=builder /app/src/lib/task-parser.js ./src/lib/task-parser.js
 COPY --from=builder /app/src/lib/task-block-utils.js ./src/lib/task-block-utils.js
 COPY --from=builder /app/src/lib/task-manager.js ./src/lib/task-manager.js
 COPY --from=builder /app/src/db/server-db.js ./src/db/server-db.js
+COPY --from=builder /app/src/db/schema.pg.cjs ./src/db/schema.pg.cjs
+COPY --from=builder /app/src/db/schema.sqlite.cjs ./src/db/schema.sqlite.cjs
 COPY --from=builder /app/src/db/sqlite-base-schema.js ./src/db/sqlite-base-schema.js
 COPY --from=builder /app/src/db/normalize.js ./src/db/normalize.js
 COPY --from=builder /app/src/lib/task-prompt.js ./src/lib/task-prompt.js
@@ -95,7 +107,19 @@ COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN sed -i 's/\r$//' ./docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
+
+# Install CLI adapters based on build args
+RUN if [ "$ENABLE_CLAUDE" = "true" ]; then npm install -g @anthropic-ai/claude-code && echo 'Claude Code installed'; fi
+RUN if [ "$ENABLE_CODEX" = "true" ]; then npm install -g @openai/codex && echo 'Codex CLI installed'; fi
+RUN if [ "$ENABLE_GEMINI" = "true" ]; then echo 'TODO: gemini CLI install command'; fi
+RUN if [ "$ENABLE_OPENCODE" = "true" ]; then npm install -g opencode && echo 'OpenCode installed'; fi
+
+# Data directories for adapter auth and workspaces
+RUN mkdir -p /var/deskrpg/users /var/deskrpg/workspaces && chown -R nextjs:nodejs /var/deskrpg
+VOLUME /var/deskrpg/users
+VOLUME /var/deskrpg/workspaces
 ENV DESKRPG_HOME=/app/data
+ENV DESKRPG_DATA_DIR=/var/deskrpg
 ENV INTERNAL_HOSTNAME="0.0.0.0"
 
 USER nextjs

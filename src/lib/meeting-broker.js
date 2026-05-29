@@ -25,6 +25,7 @@ class MeetingBroker {
    * @param {import('./openclaw-gateway.js').OpenClawGateway} config.gateway
    * @param {string} config.sessionKeyPrefix
    * @param {string} config.meetingId
+   * @param {(npcId: string) => unknown} [config.adapterResolver]
    * @param {object} [config.quota]
    * @param {object} callbacks
    * @param {() => void} [callbacks.onPollStart]
@@ -39,6 +40,7 @@ class MeetingBroker {
     this.config = config;
     this.callbacks = callbacks || {};
     this.gateway = config.gateway; // OpenClawGateway instance
+    this.adapterResolver = config.adapterResolver || null;
 
     this.turns = [];
     this.turnCounts = new Map();

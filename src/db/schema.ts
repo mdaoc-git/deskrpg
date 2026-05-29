@@ -79,6 +79,33 @@ export const gatewayShares = pgTable("gateway_shares", {
   uniqueIndex("gateway_shares_gateway_user_idx").on(table.gatewayId, table.userId),
 ]);
 
+export const providerResources = pgTable("provider_resources", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ownerUserId: uuid("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  providerType: varchar("provider_type", { length: 20 }).notNull(),
+  displayName: varchar("display_name", { length: 120 }),
+  authMethod: varchar("auth_method", { length: 20 }).notNull(),
+  credentialsEncrypted: text("credentials_encrypted"),
+  baseUrl: text("base_url"),
+  lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
+  lastValidationStatus: varchar("last_validation_status", { length: 40 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("idx_provider_resources_owner").on(table.ownerUserId),
+]);
+
+export const providerShares = pgTable("provider_shares", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  providerId: uuid("provider_id").notNull().references(() => providerResources.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: varchar("role", { length: 10 }).notNull().default("use"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("idx_provider_shares_provider").on(table.providerId),
+  uniqueIndex("provider_shares_provider_user_idx").on(table.providerId, table.userId),
+]);
+
 export const channelGatewayBindings = pgTable("channel_gateway_bindings", {
   id: uuid("id").defaultRandom().primaryKey(),
   channelId: uuid("channel_id").notNull().references(() => channels.id, { onDelete: "cascade" }),
@@ -223,11 +250,29 @@ export const npcs = pgTable("npcs", {
   direction: varchar("direction", { length: 10 }).default("down"),
   appearance: jsonb("appearance").notNull(),
   openclawConfig: jsonb("openclaw_config").notNull(),
+  adapterType: varchar("adapter_type", { length: 20 }).notNull().default("openclaw"),
+  adapterConfig: jsonb("adapter_config"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 }, (table) => [
   index("idx_npcs_channel_id").on(table.channelId),
   unique("npcs_channel_position_unique").on(table.channelId, table.positionX, table.positionY),
+]);
+
+export const npcSessions = pgTable("npc_sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  npcId: uuid("npc_id").notNull().references(() => npcs.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  adapterType: varchar("adapter_type", { length: 20 }).notNull(),
+  sessionType: varchar("session_type", { length: 20 }).notNull(),
+  sessionRef: varchar("session_ref", { length: 200 }).notNull(),
+  contextKey: varchar("context_key", { length: 200 }).notNull(),
+  lastSummary: text("last_summary"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("idx_npc_sessions_npc").on(table.npcId),
+  uniqueIndex("npc_sessions_npc_user_context_idx").on(table.npcId, table.userId, table.contextKey),
 ]);
 
 export const npcReports = pgTable("npc_reports", {

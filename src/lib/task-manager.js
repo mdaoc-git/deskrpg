@@ -6,10 +6,6 @@
 
 const { eq, and, or, desc, sql, getTableColumns, isNull, isNotNull, lte } = require("drizzle-orm");
 
-function nowIso() {
-  return new Date().toISOString();
-}
-
 function normalizeTimestamp(value) {
   if (value == null) return null;
   return value instanceof Date ? value.toISOString() : value;
@@ -44,10 +40,18 @@ class TaskManager {
   /**
    * @param {import('drizzle-orm').LibSQLDatabase | import('drizzle-orm/node-postgres').NodePgDatabase} db
    * @param {{ tasks: any, npcs: any }} schema
+   * @param {{ isPostgres?: boolean }} [options]
    */
-  constructor(db, schema) {
+  constructor(db, schema, options = {}) {
     this.db = db;
     this.schema = schema;
+    // PostgreSQL timestamp columns (drizzle pg-core 'date' mode) require a Date object;
+    // SQLite text columns require an ISO string. Mirror the gateway-resources nowForDb pattern.
+    this.isPostgres = options.isPostgres ?? false;
+  }
+
+  _nowForDb() {
+    return this.isPostgres ? new Date() : new Date().toISOString();
   }
 
   /**
@@ -88,8 +92,8 @@ class TaskManager {
   async _upsertTask(channelId, npcId, assignerId, npcTaskId, title, summary, status, options = {}) {
     const { db, schema } = this;
     const autoNudgeMax = options.autoNudgeMax ?? 5;
-    const completedAt = (status === "complete" || status === "cancelled") ? nowIso() : null;
-    const updatedAt = nowIso();
+    const completedAt = (status === "complete" || status === "cancelled") ? this._nowForDb() : null;
+    const updatedAt = this._nowForDb();
     const lastReportedAt = options.markReported ? updatedAt : null;
 
     const [row] = await db
@@ -129,8 +133,8 @@ class TaskManager {
   async _updateOrCreate(channelId, npcId, assignerId, npcTaskId, title, summary, status, options = {}) {
     const { db, schema } = this;
     const autoNudgeMax = options.autoNudgeMax ?? 5;
-    const completedAt = (status === "complete" || status === "cancelled") ? nowIso() : null;
-    const updatedAt = nowIso();
+    const completedAt = (status === "complete" || status === "cancelled") ? this._nowForDb() : null;
+    const updatedAt = this._nowForDb();
     const lastReportedAt = options.markReported ? updatedAt : null;
 
     const rows = await db
@@ -221,6 +225,8 @@ class TaskManager {
 
   async getStaleInProgressTasks(channelId, olderThanIso) {
     const { db, schema } = this;
+    // PG date-mode timestamp columns require a Date for comparison; SQLite text columns take the ISO string.
+    const cutoff = this.isPostgres ? new Date(olderThanIso) : olderThanIso;
 
     const rows = await db
       .select()
@@ -232,11 +238,11 @@ class TaskManager {
           or(
             and(
               isNotNull(schema.tasks.lastReportedAt),
-              lte(schema.tasks.lastReportedAt, olderThanIso),
+              lte(schema.tasks.lastReportedAt, cutoff),
             ),
             and(
               isNull(schema.tasks.lastReportedAt),
-              lte(schema.tasks.updatedAt, olderThanIso),
+              lte(schema.tasks.updatedAt, cutoff),
             ),
           ),
         )
@@ -255,8 +261,8 @@ class TaskManager {
       .update(schema.tasks)
       .set({
         autoNudgeCount: (current.autoNudgeCount ?? 0) + 1,
-        lastNudgedAt: nowIso(),
-        updatedAt: nowIso(),
+        lastNudgedAt: this._nowForDb(),
+        updatedAt: this._nowForDb(),
       })
       .where(
         and(
@@ -275,9 +281,9 @@ class TaskManager {
       .update(schema.tasks)
       .set({
         status: "stalled",
-        stalledAt: nowIso(),
+        stalledAt: this._nowForDb(),
         stalledReason: reason,
-        updatedAt: nowIso(),
+        updatedAt: this._nowForDb(),
       })
       .where(
         and(
@@ -300,7 +306,7 @@ class TaskManager {
         lastNudgedAt: null,
         stalledAt: null,
         stalledReason: null,
-        updatedAt: nowIso(),
+        updatedAt: this._nowForDb(),
       })
       .where(
         and(
@@ -342,7 +348,7 @@ class TaskManager {
       throw new Error("npcId required for status: " + toStatus);
     }
 
-    const now = nowIso();
+    const now = this._nowForDb();
     const completedAt = (toStatus === "complete" || toStatus === "cancelled") ? now : null;
 
     const updates = {
@@ -436,7 +442,7 @@ class TaskManager {
 
   async completeTask(taskId, channelId) {
     const { db, schema } = this;
-    const completedAt = nowIso();
+    const completedAt = this._nowForDb();
     const [row] = await db
       .update(schema.tasks)
       .set({

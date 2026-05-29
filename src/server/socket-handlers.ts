@@ -53,6 +53,13 @@ import {
   registerMeetingSocketHandlers,
 } from "./meeting-socket";
 import { registerMeetingDiscussionHandlers } from "./meeting-discussion";
+import { AdapterRegistry } from "../lib/adapters/types.js";
+import { OpenClawAdapter } from "../lib/adapters/openclaw-adapter.js";
+import { ClaudeAdapter } from "../lib/adapters/claude-adapter.js";
+import { CodexAdapter } from "../lib/adapters/codex-adapter.js";
+import { GeminiAdapter } from "../lib/adapters/gemini-adapter.js";
+import { OpencodeAdapter as OpenCodeAdapter } from "../lib/adapters/opencode-adapter.js";
+import { dmHub } from "../lib/adapters/dm-hub.js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
 const { OpenClawGateway } = require("../lib/openclaw-gateway.js") as { OpenClawGateway: new () => any };
@@ -64,6 +71,21 @@ const { sanitizeNpcResponseText } = require("../lib/task-block-utils.js") as typ
 const { TaskManager } = require("../lib/task-manager.js") as { TaskManager: new (db: typeof import("../db").db, schema: { tasks: typeof tasks; npcs: typeof npcs }) => { handleTaskAction: (...args: unknown[]) => Promise<unknown>; getTasksByNpc: (npcId: string) => Promise<unknown[]>; getTasksByChannel: (channelId: string) => Promise<unknown[]>; deleteTask: (taskId: string, channelId: string) => Promise<unknown>; getStaleInProgressTasks: (channelId: string, olderThanIso: string) => Promise<unknown[]>; markTaskNudged: (taskId: string, channelId: string) => Promise<unknown>; markTaskStalled: (taskId: string, channelId: string, reason: string) => Promise<unknown>; resumeTask: (taskId: string, channelId: string) => Promise<unknown>; completeTask: (taskId: string, channelId: string) => Promise<unknown>; createBacklogTask: (channelId: string, assignerId: string, title: string, summary: string | null) => Promise<unknown>; moveTask: (taskId: string, channelId: string, toStatus: string, npcId: string | null, options?: { expectedFromStatus?: string }) => Promise<unknown>; getTaskById: (taskId: string, channelId: string) => Promise<unknown>; getTaskByNpcTaskId: (npcId: string, npcTaskId: string) => Promise<unknown>; hasInProgressTask: (npcId: string, channelId: string) => Promise<boolean>; getNextPendingTask: (npcId: string, channelId: string) => Promise<ManagedTask | null>; }; };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { withTaskReminder, normalizeTaskPromptLocale, buildTaskSessionPrompt } = require("../lib/task-prompt.js") as typeof import("../lib/task-prompt.js");
+
+const adapterRegistry = new AdapterRegistry();
+const openclawAdapter = new OpenClawAdapter();
+adapterRegistry.register(openclawAdapter);
+
+// Register CLI adapters when the corresponding local CLI is installed.
+for (const AdapterClass of [ClaudeAdapter, CodexAdapter, GeminiAdapter, OpenCodeAdapter]) {
+  const adapter = new AdapterClass();
+  void adapter.testConnection({}).then((result) => {
+    if (result.status === "ok") {
+      adapterRegistry.register(adapter);
+      console.log("[adapters] Registered", adapter.type, "adapter (", result.version, ")");
+    }
+  }).catch(() => {});
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -87,6 +109,8 @@ interface NpcConfig {
   name: string;
   agentId: string | null;
   sessionKeyPrefix: string;
+  adapterType: string;
+  adapterConfig: Record<string, unknown>;
   _channelId: string;
   _name: string;
   role?: string | null;
@@ -356,23 +380,48 @@ async function runProgressNudgeForTask(
 
   try {
     const npcConfig = await getNpcConfig(task.npcId);
-    if (!npcConfig?.agentId) return;
+    if (!npcConfig) return;
 
     const targetUserId = await getAssignerUserId(task.assignerId);
     if (!targetUserId) return;
 
-    const gateway = await getOrConnectGateway(task.channelId);
-    if (!gateway) return;
+    const sessionKey = `${npcConfig.sessionKeyPrefix || task.npcId}-task-${task.npcTaskId || task.id}`;
+    const prompt = withTaskReminder(promptOverride ?? buildAutoExecutionPrompt(task));
+    let response = "";
 
-    const sessionKey = `${npcConfig.sessionKeyPrefix || task.npcId}-dm-${targetUserId}`;
-    await taskManager.markTaskNudged(task.id, task.channelId);
-    const response = await gateway.chatSend(
-      npcConfig.agentId,
-      sessionKey,
-      withTaskReminder(promptOverride ?? buildAutoExecutionPrompt(task)),
-      () => {},
-    );
+    if (npcConfig.adapterType === openclawAdapter.type) {
+      if (!npcConfig.agentId) return;
+
+      const gateway = await getOrConnectGateway(task.channelId);
+      if (!gateway) return;
+
+      await taskManager.markTaskNudged(task.id, task.channelId);
+      ({ response } = await openclawAdapter.executeWithGateway(gateway, {
+        agentId: npcConfig.agentId,
+        channelId: task.channelId,
+        sessionKey,
+        prompt,
+      }));
+    } else if (adapterRegistry.has(npcConfig.adapterType)) {
+      const adapter = adapterRegistry.get(npcConfig.adapterType);
+
+      await taskManager.markTaskNudged(task.id, task.channelId);
+      ({ response } = await adapter.execute({
+        sessionKey,
+        prompt,
+        model: typeof npcConfig.adapterConfig.model === "string"
+          ? npcConfig.adapterConfig.model
+          : undefined,
+      }));
+    } else {
+      return;
+    }
+
     const parsed = parseNpcResponse(response);
+    const summary = (parsed.message || "").trim().slice(0, 500);
+    if (summary) {
+      await dmHub.updateSessionSummary(task.npcId, targetUserId, `task-${task.npcTaskId || task.id}`, summary);
+    }
 
     await processNpcTaskActions(io, parsed, {
       channelId: task.channelId,
@@ -524,12 +573,15 @@ async function getNpcConfig(npcId: string): Promise<NpcConfig | null> {
 
     const npc = rows[0];
     const oc = parseDbObject(npc.openclawConfig) || {};
+    const adapterConfig = parseDbObject(npc.adapterConfig) || {};
 
     return {
       id: npc.id,
       name: npc.name,
       agentId: (oc.agentId as string) || null,
       sessionKeyPrefix: (oc.sessionKeyPrefix as string) || npcId,
+      adapterType: typeof npc.adapterType === "string" ? npc.adapterType : "openclaw",
+      adapterConfig,
       _channelId: npc.channelId as string,
       _name: npc.name,
       role: "Participant",
@@ -550,11 +602,14 @@ async function getNpcConfigsForChannel(channelId: string): Promise<NpcConfig[]> 
 
     return rows.map((npc) => {
       const oc = parseDbObject(npc.openclawConfig) || {};
+      const adapterConfig = parseDbObject(npc.adapterConfig) || {};
       return {
         id: npc.id,
         name: npc.name,
         agentId: (oc.agentId as string) || null,
         sessionKeyPrefix: (oc.sessionKeyPrefix as string) || npc.id,
+        adapterType: typeof npc.adapterType === "string" ? npc.adapterType : "openclaw",
+        adapterConfig,
         _channelId: channelId,
         _name: npc.name,
         role: "Participant",
@@ -581,36 +636,66 @@ async function streamNpcResponse(
   sessionKeyOverride?: string,
   emitEvent?: string,
 ): Promise<string> {
-  const { agentId, _channelId, sessionKeyPrefix } = npcConfig;
+  const { agentId, _channelId, sessionKeyPrefix, adapterType } = npcConfig;
   const responseEvent = emitEvent || "npc:response";
 
-  if (!agentId) {
-    emitNpcSystemResponse(socket, npcId, "no_agent");
-    return "";
-  }
+  if (adapterType === "openclaw") {
+    if (!agentId) {
+      emitNpcSystemResponse(socket, npcId, "no_agent");
+      return "";
+    }
 
-  const gateway = await getOrConnectGateway(_channelId);
-  if (!gateway) {
-    emitNpcSystemResponse(socket, npcId, "gateway_not_connected");
-    return "";
-  }
+    const gateway = await getOrConnectGateway(_channelId);
+    if (!gateway) {
+      emitNpcSystemResponse(socket, npcId, "gateway_not_connected");
+      return "";
+    }
 
-  const sessionKey = sessionKeyOverride || `${sessionKeyPrefix || npcId}-dm-${userId}`;
-  try {
-    const response = await gateway.chatSend(
-      agentId,
-      sessionKey,
-      message,
-      (delta: string) => {
-        socket.emit(responseEvent, { npcId, chunk: delta, done: false });
-      },
-      attachments,
-    );
-    socket.emit(responseEvent, { npcId, chunk: "", done: true });
-    return response || "";
-  } catch (err) {
-    console.error(`[npc] OpenClaw chatSend error for ${npcId}:`, err);
-    emitNpcSystemResponse(socket, npcId, "gateway_error");
+    const sessionKey = sessionKeyOverride || `${sessionKeyPrefix || npcId}-dm-${userId}`;
+    try {
+      const { response } = await openclawAdapter.executeWithGateway(gateway, {
+        agentId,
+        channelId: _channelId,
+        sessionKey,
+        prompt: message,
+        onDelta: (delta: string) => {
+          socket.emit(responseEvent, { npcId, chunk: delta, done: false });
+        },
+        attachments,
+      });
+      socket.emit(responseEvent, { npcId, chunk: "", done: true });
+      return response || "";
+    } catch (err) {
+      console.error("[npc] OpenClaw chatSend error:", err);
+      emitNpcSystemResponse(socket, npcId, "gateway_error");
+      return "";
+    }
+  } else if (adapterRegistry.has(adapterType)) {
+    const adapter = adapterRegistry.get(adapterType);
+    const sessionKey = sessionKeyOverride || `${sessionKeyPrefix || npcId}-dm-${userId}`;
+
+    try {
+      const { response } = await adapter.execute({
+        sessionKey,
+        prompt: message,
+        attachments,
+        model: typeof npcConfig.adapterConfig.model === "string"
+          ? npcConfig.adapterConfig.model
+          : undefined,
+        onDelta: (delta: string) => {
+          socket.emit(responseEvent, { npcId, chunk: delta, done: false });
+        },
+        timeoutMs: 180_000,
+      });
+      socket.emit(responseEvent, { npcId, chunk: "", done: true });
+      return response || "";
+    } catch (err) {
+      console.error("[npc] CLI adapter error for " + npcId + ":", err);
+      emitNpcSystemResponse(socket, npcId, "gateway_error");
+      return "";
+    }
+  } else {
+    emitNpcSystemResponse(socket, npcId, "unsupported_adapter");
     return "";
   }
 }
@@ -627,10 +712,20 @@ async function streamMeetingNpcResponse(
   userMessage: string,
   senderName: string,
 ): Promise<void> {
-  const { agentId, sessionKeyPrefix, _name } = npcConfig;
+  const { id: npcId, agentId, sessionKeyPrefix, _name, adapterType } = npcConfig;
 
   // Skip NPCs without an assigned agent in meeting rooms
   if (!agentId) return;
+  if (!adapterRegistry.has(adapterType) || adapterType !== openclawAdapter.type) {
+    emitMeetingNpcStream(io, channelId, {
+      npcId,
+      npcName: _name,
+      chunk: "",
+      done: true,
+      messageCode: "unsupported_adapter",
+    });
+    return;
+  }
 
   const gateway = await getOrConnectGateway(channelId);
   if (!gateway) return;
@@ -652,18 +747,29 @@ async function streamMeetingNpcResponse(
 
   let fullText = "";
   try {
-    await gateway.chatSend(agentId, sessionKey, prompt, (delta: string) => {
-      fullText += delta;
-      npcMessage.content = fullText;
-      emitMeetingNpcStream(io, channelId, {
-        messageId: npcMessage.id,
-        sender: _name,
-        chunk: delta,
-        done: false,
-      });
+    const { response } = await openclawAdapter.executeWithGateway(gateway, {
+      agentId,
+      channelId,
+      sessionKey,
+      prompt,
+      onDelta: (delta: string) => {
+        fullText += delta;
+        npcMessage.content = fullText;
+        emitMeetingNpcStream(io, channelId, {
+          npcId,
+          npcName: _name,
+          messageId: npcMessage.id,
+          sender: _name,
+          chunk: delta,
+          done: false,
+        });
+      },
     });
+    fullText = response || fullText;
     npcMessage.content = fullText;
     emitMeetingNpcStream(io, channelId, {
+      npcId,
+      npcName: _name,
       messageId: npcMessage.id,
       sender: _name,
       chunk: "",
@@ -1061,15 +1167,23 @@ export function setupSocketHandlers(io: Server) {
 
         // Inject task reminder on every NPC DM so task actions can be parsed consistently.
         const fileSection = buildFilePromptSection(extractedFiles);
-        const messageToSend = withTaskReminder(trimmed + fileSection, getSocketLocale(socket));
+        const taskDashboard = await dmHub.buildTaskDashboard(npcId, npcConfig._channelId);
+        const enrichedMessage = taskDashboard
+          ? `${taskDashboard}\n\n${trimmed + fileSection}`
+          : trimmed + fileSection;
+        const messageToSend = withTaskReminder(enrichedMessage, getSocketLocale(socket));
 
         // Stream response via OpenClaw
         chatLog(`  → gateway (${npcConfig._name}): msgLen=${messageToSend.length}(${(messageToSend.length/1024).toFixed(0)}KB)`, fileAttachments ? `+${fileAttachments.length} att(${fileAttachments.map(a => `${a.fileName}:${(a.content.length/1024).toFixed(0)}KB`).join(",")})` : "");
         const response = await streamNpcResponse(socket, npcId, npcConfig, user.userId, messageToSend, fileAttachments);
         chatLog(`  ← npc response (${npcConfig._name}):`, response ? response.slice(0, 150) + (response.length > 150 ? "..." : "") : "(empty)");
         if (response) {
-          const parsed = parseNpcResponse(response);
-          const sanitizedResponse = sanitizeNpcResponseText(response);
+          const { finalResponse, markers } = dmHub.processResponseMarkers(response);
+          if (markers.length > 0) {
+            console.log("[dm-hub] Response markers:", markers);
+          }
+          const parsed = parseNpcResponse(finalResponse);
+          const sanitizedResponse = sanitizeNpcResponseText(finalResponse);
           history.push({ role: "npc", content: sanitizedResponse, timestamp: Date.now() });
           if (player?.characterId) {
             await processNpcTaskActions(io, parsed, {

@@ -37,6 +37,9 @@ interface NpcDialogProps {
   onRequestReportTask?: (taskId: string) => void;
   onResumeTask?: (taskId: string) => void;
   onCompleteTask?: (taskId: string) => void;
+  // Multi-adapter
+  onResetChat?: () => void;
+  adapterInfo?: { type: string; model?: string };
 }
 
 const COOLDOWN_MS = 2000;
@@ -61,6 +64,8 @@ export default function NpcDialog({
   onRequestReportTask,
   onResumeTask,
   onCompleteTask,
+  onResetChat,
+  adapterInfo,
 }: NpcDialogProps) {
   const t = useT();
   const [cooldown, setCooldown] = useState(false);
@@ -204,6 +209,24 @@ export default function NpcDialog({
                 placeholder={t("chat.npcPlaceholder", { name: npcName })}
                 disabledPlaceholder={t("chat.responding")}
               />
+              {/* Footer info bar — new conversation + adapter info */}
+              <div className="flex items-center justify-between px-3 py-1.5 border-t border-gray-700 text-[11px] text-gray-500">
+                <button
+                  onClick={onResetChat}
+                  disabled={isStreaming || !onResetChat}
+                  className="flex items-center gap-1 text-gray-400 hover:text-amber-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title={t("chat.newConversation")}
+                >
+                  <span>🔄</span>
+                  <span>{t("chat.newConversation")}</span>
+                </button>
+                {adapterInfo && (
+                  <span className="text-gray-500">
+                    {adapterInfo.type === "openclaw" ? "OpenClaw" : adapterInfo.type.charAt(0).toUpperCase() + adapterInfo.type.slice(1)}
+                    {adapterInfo.model && <span className="ml-1 text-gray-600">· {adapterInfo.model}</span>}
+                  </span>
+                )}
+              </div>
             </>
           ) : activeTaskId ? (
             /* Task conversation view */

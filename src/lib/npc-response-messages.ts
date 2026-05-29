@@ -4,6 +4,7 @@ const NPC_RESPONSE_MESSAGE_KEYS = {
   no_agent: "npc.noAgent",
   gateway_not_connected: "npc.gatewayNotConnected",
   gateway_error: "npc.gatewayError",
+  unsupported_adapter: "npc.unsupportedAdapter",
   wait_before_sending: "npc.waitBeforeSending",
   npc_not_found: "npc.notFound",
   unsupported_file_type: "npc.unsupportedFileType",
