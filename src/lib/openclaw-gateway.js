@@ -12,8 +12,8 @@ const { createHash, generateKeyPairSync, randomUUID, sign } = require("crypto");
 const runtimePaths = require("./runtime-paths.js");
 
 const PROTOCOL_MIN = 1;
-const PROTOCOL_MAX = 3;
-const MODERN_PROTOCOL = 3;
+const PROTOCOL_MAX = 4;
+const MODERN_PROTOCOL = 4;
 const MODERN_CLIENT_ID = "cli";
 const MODERN_CLIENT_MODE = "cli";
 const MODERN_ROLE = "operator";
